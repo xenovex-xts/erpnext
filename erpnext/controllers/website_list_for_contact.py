@@ -7,7 +7,7 @@ import json
 import frappe
 from frappe import _
 from frappe.modules.utils import get_module_app
-from frappe.utils import flt, has_common
+from frappe.utils import cint, flt, has_common
 from frappe.utils.user import is_website_user
 
 
@@ -178,6 +178,7 @@ def get_list_for_transactions(
 
 
 def rfq_transaction_list(parties_doctype, doctype, parties, limit_start, limit_page_length):
+<<<<<<< HEAD
 	party = frappe.qb.DocType(parties_doctype)
 	data = (
 		frappe.qb.from_(party)
@@ -188,6 +189,25 @@ def rfq_transaction_list(parties_doctype, doctype, parties, limit_start, limit_p
 		.limit(limit_page_length)
 		.offset(limit_start)
 	).run(as_dict=True)
+=======
+	data = frappe.db.sql(
+<<<<<<< HEAD
+		"""select distinct parent as name, supplier from `tab{doctype}`
+			where supplier = '{supplier}' and docstatus=1  order by modified desc limit {start}, {len}""".format(
+			doctype=parties_doctype, supplier=parties[0], start=limit_start, len=limit_page_length
+		),
+=======
+		f"""select distinct parent as name, supplier from `tab{parties_doctype}`
+			where supplier = %(supplier)s and docstatus=1  order by creation desc limit %(start)s, %(len)s""",
+		{
+			"supplier": parties[0],
+			"start": cint(limit_start),
+			"len": cint(limit_page_length),
+		},
+>>>>>>> b72cde73ba (fix: Add likely missing escaps (#55574))
+		as_dict=1,
+	)
+>>>>>>> c8c983f4ac (fix: Add likely missing escaps (#55574))
 
 	return post_process(doctype, data)
 
