@@ -191,20 +191,13 @@ def rfq_transaction_list(parties_doctype, doctype, parties, limit_start, limit_p
 	).run(as_dict=True)
 =======
 	data = frappe.db.sql(
-<<<<<<< HEAD
-		"""select distinct parent as name, supplier from `tab{doctype}`
-			where supplier = '{supplier}' and docstatus=1  order by modified desc limit {start}, {len}""".format(
-			doctype=parties_doctype, supplier=parties[0], start=limit_start, len=limit_page_length
-		),
-=======
 		f"""select distinct parent as name, supplier from `tab{parties_doctype}`
-			where supplier = %(supplier)s and docstatus=1  order by creation desc limit %(start)s, %(len)s""",
+			where supplier = %(supplier)s and docstatus=1  order by modified desc limit %(start)s, %(len)s""",
 		{
 			"supplier": parties[0],
 			"start": cint(limit_start),
 			"len": cint(limit_page_length),
 		},
->>>>>>> b72cde73ba (fix: Add likely missing escaps (#55574))
 		as_dict=1,
 	)
 >>>>>>> c8c983f4ac (fix: Add likely missing escaps (#55574))
