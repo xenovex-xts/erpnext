@@ -178,7 +178,6 @@ def get_list_for_transactions(
 
 
 def rfq_transaction_list(parties_doctype, doctype, parties, limit_start, limit_page_length):
-<<<<<<< HEAD
 	party = frappe.qb.DocType(parties_doctype)
 	data = (
 		frappe.qb.from_(party)
@@ -189,18 +188,6 @@ def rfq_transaction_list(parties_doctype, doctype, parties, limit_start, limit_p
 		.limit(limit_page_length)
 		.offset(limit_start)
 	).run(as_dict=True)
-=======
-	data = frappe.db.sql(
-		f"""select distinct parent as name, supplier from `tab{parties_doctype}`
-			where supplier = %(supplier)s and docstatus=1  order by modified desc limit %(start)s, %(len)s""",
-		{
-			"supplier": parties[0],
-			"start": cint(limit_start),
-			"len": cint(limit_page_length),
-		},
-		as_dict=1,
-	)
->>>>>>> c8c983f4ac (fix: Add likely missing escaps (#55574))
 
 	return post_process(doctype, data)
 
