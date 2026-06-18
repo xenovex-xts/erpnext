@@ -2560,6 +2560,92 @@ def get_split_invoice_rows(invoice: dict, payment_term_template: str, exc_rates:
 	return split_rows
 
 
+# def get_orders_to_be_billed(
+# 	posting_date,
+# 	party_type,
+# 	party,
+# 	company,
+# 	party_account_currency,
+# 	company_currency,
+# 	cost_center=None,
+# 	filters=None,
+# ):
+# 	voucher_type = None
+# 	if party_type == "Customer":
+# 		voucher_type = "Sales Order"
+# 	elif party_type == "Supplier":
+# 		voucher_type = "Purchase Order"
+
+# 	if not voucher_type:
+# 		return []
+
+# 	# dynamic dimension filters
+# 	condition = ""
+# 	active_dimensions = get_dimensions(True)[0]
+# 	for dim in active_dimensions:
+# 		if filters.get(dim.fieldname):
+# 			condition += f" and {dim.fieldname}={frappe.db.escape(filters.get(dim.fieldname))}"
+
+# 	if party_account_currency == company_currency:
+# 		grand_total_field = "base_grand_total"
+# 		rounded_total_field = "base_rounded_total"
+# 	else:
+# 		grand_total_field = "grand_total"
+# 		rounded_total_field = "rounded_total"
+
+# 	orders = frappe.db.sql(
+# 		"""
+# 		select
+# 			name as voucher_no,
+# 			if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) as invoice_amount,
+# 			(if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) - advance_paid) as outstanding_amount,
+# 			transaction_date as posting_date
+# 		from
+# 			`tab{voucher_type}`
+# 		where
+# 			{party_type} = %s
+# 			and docstatus = 1
+# 			and company = %s
+# 			and status != "Closed"
+# 			and if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) > advance_paid
+# 			and abs(100 - per_billed) > 0.01
+# 			{condition}
+# 		order by
+# 			transaction_date, name
+# 	""".format(
+# 			**{
+# 				"rounded_total_field": rounded_total_field,
+# 				"grand_total_field": grand_total_field,
+# 				"voucher_type": voucher_type,
+# 				"party_type": scrub(party_type),
+# 				"condition": condition,
+# 			}
+# 		),
+# 		(party, company),
+# 		as_dict=True,
+# 	)
+
+# 	order_list = []
+# 	for d in orders:
+# 		if (
+# 			filters
+# 			and filters.get("outstanding_amt_greater_than")
+# 			and filters.get("outstanding_amt_less_than")
+# 			and not (
+# 				flt(filters.get("outstanding_amt_greater_than"))
+# 				<= flt(d.outstanding_amount)
+# 				<= flt(filters.get("outstanding_amt_less_than"))
+# 			)
+# 		):
+# 			continue
+
+# 		d["voucher_type"] = voucher_type
+# 		# This assumes that the exchange rate required is the one in the SO
+# 		d["exchange_rate"] = get_exchange_rate(party_account_currency, company_currency, posting_date)
+# 		order_list.append(d)
+
+# 	return order_list
+
 def get_orders_to_be_billed(
 	posting_date,
 	party_type,
@@ -2593,34 +2679,35 @@ def get_orders_to_be_billed(
 		grand_total_field = "grand_total"
 		rounded_total_field = "rounded_total"
 
+	invoice_amount_expr = f"""
+	CASE
+		WHEN {rounded_total_field} IS NOT NULL
+			 AND {rounded_total_field} <> 0
+		THEN {rounded_total_field}
+		ELSE {grand_total_field}
+	END
+	"""
+
 	orders = frappe.db.sql(
-		"""
+		f"""
 		select
 			name as voucher_no,
-			if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) as invoice_amount,
-			(if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) - advance_paid) as outstanding_amount,
+			{invoice_amount_expr} as invoice_amount,
+			({invoice_amount_expr} - advance_paid) as outstanding_amount,
 			transaction_date as posting_date
 		from
 			`tab{voucher_type}`
 		where
-			{party_type} = %s
+			{scrub(party_type)} = %s
 			and docstatus = 1
 			and company = %s
-			and status != "Closed"
-			and if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) > advance_paid
+			and status != 'Closed'
+			and {invoice_amount_expr} > advance_paid
 			and abs(100 - per_billed) > 0.01
 			{condition}
 		order by
 			transaction_date, name
-	""".format(
-			**{
-				"rounded_total_field": rounded_total_field,
-				"grand_total_field": grand_total_field,
-				"voucher_type": voucher_type,
-				"party_type": scrub(party_type),
-				"condition": condition,
-			}
-		),
+		""",
 		(party, company),
 		as_dict=True,
 	)
@@ -2640,13 +2727,74 @@ def get_orders_to_be_billed(
 			continue
 
 		d["voucher_type"] = voucher_type
+
 		# This assumes that the exchange rate required is the one in the SO
-		d["exchange_rate"] = get_exchange_rate(party_account_currency, company_currency, posting_date)
+		d["exchange_rate"] = get_exchange_rate(
+			party_account_currency,
+			company_currency,
+			posting_date,
+		)
+
 		order_list.append(d)
 
 	return order_list
 
 
+# def get_negative_outstanding_invoices(
+# 	party_type,
+# 	party,
+# 	party_account,
+# 	party_account_currency,
+# 	company_currency,
+# 	cost_center=None,
+# 	condition=None,
+# ):
+# 	if party_type not in ["Customer", "Supplier"]:
+# 		return []
+# 	voucher_type = "Sales Invoice" if party_type == "Customer" else "Purchase Invoice"
+# 	account = "debit_to" if voucher_type == "Sales Invoice" else "credit_to"
+# 	supplier_condition = ""
+# 	if voucher_type == "Purchase Invoice":
+# 		supplier_condition = "and (release_date is null or release_date <= CURRENT_DATE)"
+# 	if party_account_currency == company_currency:
+# 		grand_total_field = "base_grand_total"
+# 		rounded_total_field = "base_rounded_total"
+# 	else:
+# 		grand_total_field = "grand_total"
+# 		rounded_total_field = "rounded_total"
+
+# 	return frappe.db.sql(
+# 		"""
+# 		select
+# 			"{voucher_type}" as voucher_type, name as voucher_no, {account} as account,
+# 			if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) as invoice_amount,
+# 			outstanding_amount, posting_date,
+# 			due_date, conversion_rate as exchange_rate
+# 		from
+# 			`tab{voucher_type}`
+# 		where
+# 			{party_type} = %s and {party_account} = %s and docstatus = 1 and
+# 			outstanding_amount < 0
+# 			{supplier_condition}
+# 			{condition}
+# 		order by
+# 			posting_date, name
+# 		""".format(
+# 			**{
+# 				"supplier_condition": supplier_condition,
+# 				"condition": condition,
+# 				"rounded_total_field": rounded_total_field,
+# 				"grand_total_field": grand_total_field,
+# 				"voucher_type": voucher_type,
+# 				"party_type": scrub(party_type),
+# 				"party_account": "debit_to" if party_type == "Customer" else "credit_to",
+# 				"cost_center": cost_center,
+# 				"account": account,
+# 			}
+# 		),
+# 		(party, party_account),
+# 		as_dict=True,
+# 	)
 def get_negative_outstanding_invoices(
 	party_type,
 	party,
@@ -2658,11 +2806,14 @@ def get_negative_outstanding_invoices(
 ):
 	if party_type not in ["Customer", "Supplier"]:
 		return []
+
 	voucher_type = "Sales Invoice" if party_type == "Customer" else "Purchase Invoice"
 	account = "debit_to" if voucher_type == "Sales Invoice" else "credit_to"
+
 	supplier_condition = ""
 	if voucher_type == "Purchase Invoice":
 		supplier_condition = "and (release_date is null or release_date <= CURRENT_DATE)"
+
 	if party_account_currency == company_currency:
 		grand_total_field = "base_grand_total"
 		rounded_total_field = "base_rounded_total"
@@ -2670,39 +2821,41 @@ def get_negative_outstanding_invoices(
 		grand_total_field = "grand_total"
 		rounded_total_field = "rounded_total"
 
+	invoice_amount_expr = f"""
+	CASE
+		WHEN {rounded_total_field} IS NOT NULL
+			 AND {rounded_total_field} <> 0
+		THEN {rounded_total_field}
+		ELSE {grand_total_field}
+	END
+	"""
+
 	return frappe.db.sql(
-		"""
+		f"""
 		select
-			"{voucher_type}" as voucher_type, name as voucher_no, {account} as account,
-			if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) as invoice_amount,
-			outstanding_amount, posting_date,
-			due_date, conversion_rate as exchange_rate
+			'{voucher_type}' as voucher_type,
+			name as voucher_no,
+			{account} as account,
+			{invoice_amount_expr} as invoice_amount,
+			outstanding_amount,
+			posting_date,
+			due_date,
+			conversion_rate as exchange_rate
 		from
 			`tab{voucher_type}`
 		where
-			{party_type} = %s and {party_account} = %s and docstatus = 1 and
-			outstanding_amount < 0
+			{scrub(party_type)} = %s
+			and {"debit_to" if party_type == "Customer" else "credit_to"} = %s
+			and docstatus = 1
+			and outstanding_amount < 0
 			{supplier_condition}
 			{condition}
 		order by
 			posting_date, name
-		""".format(
-			**{
-				"supplier_condition": supplier_condition,
-				"condition": condition,
-				"rounded_total_field": rounded_total_field,
-				"grand_total_field": grand_total_field,
-				"voucher_type": voucher_type,
-				"party_type": scrub(party_type),
-				"party_account": "debit_to" if party_type == "Customer" else "credit_to",
-				"cost_center": cost_center,
-				"account": account,
-			}
-		),
+		""",
 		(party, party_account),
 		as_dict=True,
 	)
-
 
 @frappe.whitelist()
 def get_party_details(company, party_type, party, date, cost_center=None):

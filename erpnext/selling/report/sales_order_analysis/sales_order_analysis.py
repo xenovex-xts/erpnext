@@ -59,6 +59,45 @@ def get_conditions(filters):
 	return conditions
 
 
+# def get_data(conditions, filters):
+	# data = frappe.db.sql(
+	# 	f"""
+	# 	SELECT
+	# 		so.transaction_date as date,
+	# 		soi.delivery_date as delivery_date,
+	# 		so.name as sales_order,
+	# 		so.status, so.customer, soi.item_code,
+	# 		DATEDIFF(CURRENT_DATE, soi.delivery_date) as delay_days,
+	# 		IF(so.status in ('Completed','To Bill'), 0, (SELECT delay_days)) as delay,
+	# 		soi.qty, soi.delivered_qty,
+	# 		(soi.qty - soi.delivered_qty) AS pending_qty,
+	# 		IFNULL(SUM(sii.qty), 0) as billed_qty,
+	# 		soi.base_amount as amount,
+	# 		(soi.delivered_qty * soi.base_rate) as delivered_qty_amount,
+	# 		(soi.billed_amt * IFNULL(so.conversion_rate, 1)) as billed_amount,
+	# 		(soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) as pending_amount,
+	# 		soi.warehouse as warehouse,
+	# 		so.company, soi.name,
+	# 		soi.description as description
+	# 	FROM
+	# 		`tabSales Order` so,
+	# 		`tabSales Order Item` soi
+	# 	LEFT JOIN `tabSales Invoice Item` sii
+	# 		ON sii.so_detail = soi.name and sii.docstatus = 1
+	# 	WHERE
+	# 		soi.parent = so.name
+	# 		and so.status not in ('Stopped', 'On Hold')
+	# 		and so.docstatus = 1
+	# 		{conditions}
+	# 	GROUP BY soi.name
+	# 	ORDER BY so.transaction_date ASC, soi.item_code ASC
+	# """,
+	# 	filters,
+	# 	as_dict=1,
+	# )
+
+	# return data
+
 def get_data(conditions, filters):
 	data = frappe.db.sql(
 		f"""
@@ -66,32 +105,54 @@ def get_data(conditions, filters):
 			so.transaction_date as date,
 			soi.delivery_date as delivery_date,
 			so.name as sales_order,
-			so.status, so.customer, soi.item_code,
-			DATEDIFF(CURRENT_DATE, soi.delivery_date) as delay_days,
-			IF(so.status in ('Completed','To Bill'), 0, (SELECT delay_days)) as delay,
-			soi.qty, soi.delivered_qty,
+			so.status,
+			so.customer,
+			soi.item_code,
+
+			(CURRENT_DATE - soi.delivery_date) as delay_days,
+
+			CASE
+				WHEN so.status IN ('Completed', 'To Bill')
+				THEN 0
+				ELSE (CURRENT_DATE - soi.delivery_date)
+			END as delay,
+
+			soi.qty,
+			soi.delivered_qty,
 			(soi.qty - soi.delivered_qty) AS pending_qty,
+
 			IFNULL(SUM(sii.qty), 0) as billed_qty,
+
 			soi.base_amount as amount,
 			(soi.delivered_qty * soi.base_rate) as delivered_qty_amount,
 			(soi.billed_amt * IFNULL(so.conversion_rate, 1)) as billed_amount,
 			(soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) as pending_amount,
+
 			soi.warehouse as warehouse,
-			so.company, soi.name,
+			so.company,
+			soi.name,
 			soi.description as description
+
 		FROM
 			`tabSales Order` so,
 			`tabSales Order Item` soi
 		LEFT JOIN `tabSales Invoice Item` sii
-			ON sii.so_detail = soi.name and sii.docstatus = 1
+			ON sii.so_detail = soi.name
+			AND sii.docstatus = 1
+
 		WHERE
 			soi.parent = so.name
-			and so.status not in ('Stopped', 'On Hold')
-			and so.docstatus = 1
+			AND so.status NOT IN ('Stopped', 'On Hold')
+			AND so.docstatus = 1
 			{conditions}
-		GROUP BY soi.name
-		ORDER BY so.transaction_date ASC, soi.item_code ASC
-	""",
+
+		GROUP BY
+			soi.name
+
+		ORDER BY
+			so.transaction_date ASC,
+			soi.item_code ASC
+		""",
 		filters,
 		as_dict=1,
 	)

@@ -45,33 +45,96 @@ def execute(filters=None):
 	return columns, grouped_data
 
 
+# def get_pos_entries(filters, group_by_field):
+# 	conditions = get_conditions(filters)
+# 	order_by = "p.posting_date"
+# 	select_mop_field, from_sales_invoice_payment, group_by_mop_condition = "", "", ""
+# 	if group_by_field == "mode_of_payment":
+# 		select_mop_field = (
+# 			", sip.mode_of_payment, sip.base_amount - IF(sip.type='Cash', p.change_amount, 0) as paid_amount"
+# 		)
+# 		from_sales_invoice_payment = ", `tabSales Invoice Payment` sip"
+# 		group_by_mop_condition = "sip.parent = p.name AND ifnull(sip.base_amount - IF(sip.type='Cash', p.change_amount, 0), 0) != 0 AND"
+# 		order_by += ", sip.mode_of_payment"
+
+# 	elif group_by_field:
+# 		order_by += f", p.{group_by_field}"
+# 		select_mop_field = ", p.base_paid_amount - p.change_amount  as paid_amount "
+
+# 	# nosemgrep
+# 	return frappe.db.sql(
+# 		f"""
+# 		SELECT
+# 			p.posting_date, p.name as pos_invoice, p.pos_profile, p.company,
+# 			p.owner, p.customer, p.is_return, p.base_grand_total as grand_total {select_mop_field}
+# 		FROM
+# 			`tabPOS Invoice` p {from_sales_invoice_payment}
+# 		WHERE
+# 			p.docstatus = 1 and
+# 			{group_by_mop_condition}
+# 			{conditions}
+# 		ORDER BY
+# 			{order_by}
+# 		""",
+# 		filters,
+# 		as_dict=1,
+# 	)
 def get_pos_entries(filters, group_by_field):
 	conditions = get_conditions(filters)
 	order_by = "p.posting_date"
-	select_mop_field, from_sales_invoice_payment, group_by_mop_condition = "", "", ""
+
+	select_mop_field = ""
+	from_sales_invoice_payment = ""
+	group_by_mop_condition = ""
+
 	if group_by_field == "mode_of_payment":
-		select_mop_field = (
-			", sip.mode_of_payment, sip.base_amount - IF(sip.type='Cash', p.change_amount, 0) as paid_amount"
-		)
+		paid_amount_expr = """
+			sip.base_amount -
+			CASE
+				WHEN sip.type = 'Cash'
+				THEN p.change_amount
+				ELSE 0
+			END
+		"""
+
+		select_mop_field = f"""
+			, sip.mode_of_payment,
+			{paid_amount_expr} as paid_amount
+		"""
+
 		from_sales_invoice_payment = ", `tabSales Invoice Payment` sip"
-		group_by_mop_condition = "sip.parent = p.name AND ifnull(sip.base_amount - IF(sip.type='Cash', p.change_amount, 0), 0) != 0 AND"
+
+		group_by_mop_condition = f"""
+			sip.parent = p.name
+			AND ifnull({paid_amount_expr}, 0) != 0
+			AND
+		"""
+
 		order_by += ", sip.mode_of_payment"
 
 	elif group_by_field:
 		order_by += f", p.{group_by_field}"
-		select_mop_field = ", p.base_paid_amount - p.change_amount  as paid_amount "
+		select_mop_field = ", p.base_paid_amount - p.change_amount as paid_amount"
 
 	# nosemgrep
 	return frappe.db.sql(
 		f"""
 		SELECT
-			p.posting_date, p.name as pos_invoice, p.pos_profile, p.company,
-			p.owner, p.customer, p.is_return, p.base_grand_total as grand_total {select_mop_field}
+			p.posting_date,
+			p.name as pos_invoice,
+			p.pos_profile,
+			p.company,
+			p.owner,
+			p.customer,
+			p.is_return,
+			p.base_grand_total as grand_total
+			{select_mop_field}
 		FROM
-			`tabPOS Invoice` p {from_sales_invoice_payment}
+			`tabPOS Invoice` p
+			{from_sales_invoice_payment}
 		WHERE
-			p.docstatus = 1 and
-			{group_by_mop_condition}
+			p.docstatus = 1
+			and {group_by_mop_condition}
 			{conditions}
 		ORDER BY
 			{order_by}
@@ -79,7 +142,6 @@ def get_pos_entries(filters, group_by_field):
 		filters,
 		as_dict=1,
 	)
-
 
 def concat_mode_of_payments(pos_entries):
 	mode_of_payments = get_mode_of_payments(set(d.pos_invoice for d in pos_entries))

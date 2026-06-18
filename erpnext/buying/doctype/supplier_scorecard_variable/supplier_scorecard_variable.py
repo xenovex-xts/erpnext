@@ -59,10 +59,31 @@ def get_total_workdays(scorecard):
 def get_item_workdays(scorecard):
 	"""Gets the number of days in this period"""
 	supplier = frappe.get_doc("Supplier", scorecard.supplier)
+	# total_item_days = frappe.db.sql(
+	# 	"""
+	# 		SELECT
+	# 			SUM(DATEDIFF( %(end_date)s, po_item.schedule_date) * (po_item.qty))
+	# 		FROM
+	# 			`tabPurchase Order Item` po_item,
+	# 			`tabPurchase Order` po
+	# 		WHERE
+	# 			po.supplier = %(supplier)s
+	# 			AND po_item.received_qty < po_item.qty
+	# 			AND po_item.schedule_date BETWEEN %(start_date)s AND %(end_date)s
+	# 			AND po_item.parent = po.name""",
+	# 	{"supplier": supplier.name, "start_date": scorecard.start_date, "end_date": scorecard.end_date},
+	# 	as_dict=0,
+	# )[0][0]
+
 	total_item_days = frappe.db.sql(
 		"""
 			SELECT
-				SUM(DATEDIFF( %(end_date)s, po_item.schedule_date) * (po_item.qty))
+				SUM(
+					(
+						%(end_date)s::date
+						- po_item.schedule_date::date
+					) * po_item.qty
+				)
 			FROM
 				`tabPurchase Order Item` po_item,
 				`tabPurchase Order` po
@@ -148,10 +169,35 @@ def get_cost_of_on_time_shipments(scorecard):
 def get_total_days_late(scorecard):
 	"""Gets the number of item days late in the period (based on Purchase Receipts vs POs)"""
 	supplier = frappe.get_doc("Supplier", scorecard.supplier)
+	# total_delivered_late_days = frappe.db.sql(
+	# 	"""
+	# 		SELECT
+	# 			SUM(DATEDIFF(pr.posting_date,po_item.schedule_date)* pr_item.qty)
+	# 		FROM
+	# 			`tabPurchase Order Item` po_item,
+	# 			`tabPurchase Receipt Item` pr_item,
+	# 			`tabPurchase Order` po,
+	# 			`tabPurchase Receipt` pr
+	# 		WHERE
+	# 			po.supplier = %(supplier)s
+	# 			AND po_item.schedule_date BETWEEN %(start_date)s AND %(end_date)s
+	# 			AND po_item.schedule_date < pr.posting_date
+	# 			AND pr_item.docstatus = 1
+	# 			AND pr_item.purchase_order_item = po_item.name
+	# 			AND po_item.parent = po.name
+	# 			AND pr_item.parent = pr.name""",
+	# 	{"supplier": supplier.name, "start_date": scorecard.start_date, "end_date": scorecard.end_date},
+	# 	as_dict=0,
+	# )[0][0]
 	total_delivered_late_days = frappe.db.sql(
 		"""
 			SELECT
-				SUM(DATEDIFF(pr.posting_date,po_item.schedule_date)* pr_item.qty)
+				SUM(
+					(
+						pr.posting_date::date
+						- po_item.schedule_date::date
+					) * pr_item.qty
+				)
 			FROM
 				`tabPurchase Order Item` po_item,
 				`tabPurchase Receipt Item` pr_item,
@@ -171,10 +217,30 @@ def get_total_days_late(scorecard):
 	if not total_delivered_late_days:
 		total_delivered_late_days = 0
 
+	# total_missed_late_days = frappe.db.sql(
+	# 	"""
+	# 		SELECT
+	# 			SUM(DATEDIFF( %(end_date)s, po_item.schedule_date) * (po_item.qty - po_item.received_qty))
+	# 		FROM
+	# 			`tabPurchase Order Item` po_item,
+	# 			`tabPurchase Order` po
+	# 		WHERE
+	# 			po.supplier = %(supplier)s
+	# 			AND po_item.received_qty < po_item.qty
+	# 			AND po_item.schedule_date BETWEEN %(start_date)s AND %(end_date)s
+	# 			AND po_item.parent = po.name""",
+	# 	{"supplier": supplier.name, "start_date": scorecard.start_date, "end_date": scorecard.end_date},
+	# 	as_dict=0,
+	# )[0][0]
 	total_missed_late_days = frappe.db.sql(
 		"""
 			SELECT
-				SUM(DATEDIFF( %(end_date)s, po_item.schedule_date) * (po_item.qty - po_item.received_qty))
+				SUM(
+					(
+						%(end_date)s::date
+						- po_item.schedule_date::date
+					) * (po_item.qty - po_item.received_qty)
+				)
 			FROM
 				`tabPurchase Order Item` po_item,
 				`tabPurchase Order` po
@@ -596,10 +662,33 @@ def get_sq_total_items(scorecard):
 def get_rfq_response_days(scorecard):
 	"""Gets the total number of days it has taken a supplier to respond to rfqs in the period"""
 	supplier = frappe.get_doc("Supplier", scorecard.supplier)
+	# total_sq_days = frappe.db.sql(
+	# 	"""
+	# 		SELECT
+	# 			SUM(DATEDIFF(sq.transaction_date, rfq.transaction_date))
+	# 		FROM
+	# 			`tabRequest for Quotation Item` rfq_item,
+	# 			`tabSupplier Quotation Item` sq_item,
+	# 			`tabSupplier Quotation` sq,
+	# 			`tabRequest for Quotation Supplier` rfq_sup,
+	# 			`tabRequest for Quotation` rfq
+	# 		WHERE
+	# 			rfq_sup.supplier = %(supplier)s
+	# 			AND rfq.transaction_date BETWEEN %(start_date)s AND %(end_date)s
+	# 			AND sq_item.request_for_quotation_item = rfq_item.name
+	# 			AND sq_item.docstatus = 1
+	# 			AND sq.supplier = %(supplier)s
+	# 			AND sq_item.parent = sq.name
+	# 			AND rfq_item.docstatus = 1
+	# 			AND rfq_item.parent = rfq.name
+	# 			AND rfq_sup.parent = rfq.name""",
+	# 	{"supplier": supplier.name, "start_date": scorecard.start_date, "end_date": scorecard.end_date},
+	# 	as_dict=0,
+	# )[0][0]
 	total_sq_days = frappe.db.sql(
 		"""
 			SELECT
-				SUM(DATEDIFF(sq.transaction_date, rfq.transaction_date))
+				SUM(sq.transaction_date::date - rfq.transaction_date::date)
 			FROM
 				`tabRequest for Quotation Item` rfq_item,
 				`tabSupplier Quotation Item` sq_item,

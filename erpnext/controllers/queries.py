@@ -193,9 +193,18 @@ def item_query(doctype, txt, searchfield, start, page_len, filters, as_dict=Fals
 	if extra_searchfields:
 		columns += ", " + ", ".join(extra_searchfields)
 
+	# if "description" in searchfields:
+	# 	columns += """, if(length(tabItem.description) > 40, \
+	# 		concat(substr(tabItem.description, 1, 40), "..."), description) as description"""
 	if "description" in searchfields:
-		columns += """, if(length(tabItem.description) > 40, \
-			concat(substr(tabItem.description, 1, 40), "..."), description) as description"""
+		columns += """
+			,
+			CASE
+				WHEN length(description) > 40
+				THEN concat(substr(description, 1, 40), '...')
+				ELSE description
+			END as description
+		"""
 
 	searchfields = searchfields + [
 		field
@@ -256,25 +265,80 @@ def item_query(doctype, txt, searchfield, start, page_len, filters, as_dict=Fals
 	description_cond = ""
 	if frappe.db.estimate_count(doctype) < 50000:
 		# scan description only if items are less than 50000
-		description_cond = "or tabItem.description LIKE %(txt)s"
+		# description_cond = "or tabItem.description LIKE %(txt)s"
+		description_cond = 'or "tabItem".description LIKE %(txt)s'
 
+	# return frappe.db.sql(
+	# 	"""select
+	# 		tabItem.name {columns}
+	# 	from tabItem
+	# 	where tabItem.docstatus < 2
+	# 		and tabItem.disabled=0
+	# 		and tabItem.has_variants=0
+	# 		and (tabItem.end_of_life > %(today)s or ifnull(tabItem.end_of_life, '0000-00-00')='0000-00-00')
+	# 		and ({scond} or tabItem.item_code IN (select parent from `tabItem Barcode` where barcode LIKE %(txt)s)
+	# 			{description_cond})
+	# 		{fcond} {mcond}
+	# 	order by
+	# 		if(locate(%(_txt)s, name), locate(%(_txt)s, name), 99999),
+	# 		if(locate(%(_txt)s, item_name), locate(%(_txt)s, item_name), 99999),
+	# 		idx desc,
+	# 		name, item_name
+	# 	limit %(start)s, %(page_len)s """.format(
+	# 		columns=columns,
+	# 		scond=searchfields,
+	# 		fcond=get_filters_cond(doctype, filters, conditions).replace("%", "%%"),
+	# 		mcond=get_match_cond(doctype).replace("%", "%%"),
+	# 		description_cond=description_cond,
+	# 	),
+	# 	{
+	# 		"today": nowdate(),
+	# 		"txt": "%%%s%%" % txt,
+	# 		"_txt": txt.replace("%", ""),
+	# 		"start": start,
+	# 		"page_len": page_len,
+	# 	},
+	# 	as_dict=as_dict,
+	# )
 	return frappe.db.sql(
-		"""select
-			tabItem.name {columns}
-		from tabItem
-		where tabItem.docstatus < 2
-			and tabItem.disabled=0
-			and tabItem.has_variants=0
-			and (tabItem.end_of_life > %(today)s or ifnull(tabItem.end_of_life, '0000-00-00')='0000-00-00')
-			and ({scond} or tabItem.item_code IN (select parent from `tabItem Barcode` where barcode LIKE %(txt)s)
-				{description_cond})
+		"""
+		select
+			"tabItem".name {columns}
+		from "tabItem"
+		where "tabItem".docstatus < 2
+			and "tabItem".disabled = 0
+			and "tabItem".has_variants = 0
+			and (
+				"tabItem".end_of_life > %(today)s
+				or coalesce("tabItem".end_of_life::text, '') = ''
+			)
+			and (
+				{scond}
+				or "tabItem".item_code IN (
+					select parent
+					from "tabItem Barcode"
+					where barcode like %(txt)s
+				)
+				{description_cond}
+			)
 			{fcond} {mcond}
 		order by
-			if(locate(%(_txt)s, name), locate(%(_txt)s, name), 99999),
-			if(locate(%(_txt)s, item_name), locate(%(_txt)s, item_name), 99999),
+			case
+				when strpos(name, %(_txt)s) > 0
+				then strpos(name, %(_txt)s)
+				else 99999
+			end,
+			case
+				when strpos(item_name, %(_txt)s) > 0
+				then strpos(item_name, %(_txt)s)
+				else 99999
+			end,
 			idx desc,
-			name, item_name
-		limit %(start)s, %(page_len)s """.format(
+			name,
+			item_name
+		limit %(page_len)s
+		offset %(start)s
+		""".format(
 			columns=columns,
 			scond=searchfields,
 			fcond=get_filters_cond(doctype, filters, conditions).replace("%", "%%"),
@@ -283,10 +347,10 @@ def item_query(doctype, txt, searchfield, start, page_len, filters, as_dict=Fals
 		),
 		{
 			"today": nowdate(),
-			"txt": "%%%s%%" % txt,
+			"txt": f"%{txt}%",
 			"_txt": txt.replace("%", ""),
-			"start": start,
-			"page_len": page_len,
+			"start": start or 0,
+			"page_len": page_len or 20,
 		},
 		as_dict=as_dict,
 	)
@@ -792,8 +856,14 @@ def warehouse_query(doctype, txt, searchfield, start, page_len, filters):
 		searchfield = meta.get("title_field")
 		warehouse_field = meta.get("title_field")
 
+	# query = """select `tabWarehouse`.`{warehouse_field}`,
+	# 	CONCAT_WS(' : ', 'Actual Qty', ifnull(round(`tabBin`.actual_qty, 2), 0 )) actual_qty
 	query = """select `tabWarehouse`.`{warehouse_field}`,
-		CONCAT_WS(' : ', 'Actual Qty', ifnull(round(`tabBin`.actual_qty, 2), 0 )) actual_qty
+        CONCAT_WS(
+            ' : ',
+            'Actual Qty',
+            COALESCE(round(`tabBin`.actual_qty, 2), 0)
+        ) actual_qty
 		from `tabWarehouse` left join `tabBin`
 		on `tabBin`.warehouse = `tabWarehouse`.name {bin_conditions}
 		where
