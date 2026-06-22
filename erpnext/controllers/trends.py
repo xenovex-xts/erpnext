@@ -364,13 +364,15 @@ def based_wise_columns_query(based_on, trans):
 	if based_on == "Item":
 		based_on_details["based_on_cols"] = ["Item:Link/Item:120", "Item Name:Data:120"]
 		based_on_details["based_on_select"] = "t2.item_code, t2.item_name,"
-		based_on_details["based_on_group_by"] = "t2.item_code"
+		# based_on_details["based_on_group_by"] = "t2.item_code"
+		based_on_details["based_on_group_by"] = """ t2.item_code, t2.item_name, t4.default_currency """
 		based_on_details["addl_tables"] = ""
 
 	elif based_on == "Item Group":
 		based_on_details["based_on_cols"] = ["Item Group:Link/Item Group:120"]
 		based_on_details["based_on_select"] = "t2.item_group,"
-		based_on_details["based_on_group_by"] = "t2.item_group"
+		# based_on_details["based_on_group_by"] = "t2.item_group"
+		based_on_details["based_on_group_by"] = """ t2.item_group, t4.default_currency """
 		based_on_details["addl_tables"] = ""
 
 	elif based_on == "Customer":
@@ -388,13 +390,15 @@ def based_wise_columns_query(based_on, trans):
 				"Territory:Link/Territory:120",
 			]
 			based_on_details["based_on_select"] = "t1.customer, t1.customer_name, t1.territory,"
-		based_on_details["based_on_group_by"] = "t1.party_name" if trans == "Quotation" else "t1.customer"
+		# based_on_details["based_on_group_by"] = "t1.party_name" if trans == "Quotation" else "t1.customer"
+		based_on_details["based_on_group_by"] = """ t1.party_name, t1.customer_name, t1.territory, t4.default_currency """
 		based_on_details["addl_tables"] = ""
 
 	elif based_on == "Customer Group":
 		based_on_details["based_on_cols"] = ["Customer Group:Link/Customer Group"]
 		based_on_details["based_on_select"] = "t1.customer_group,"
-		based_on_details["based_on_group_by"] = "t1.customer_group"
+		# based_on_details["based_on_group_by"] = "t1.customer_group"
+		based_on_details["based_on_group_by"] = """t1.customer,t1.customer_name,t1.territory,t4.default_currency"""
 		based_on_details["addl_tables"] = ""
 
 	elif based_on == "Supplier":
@@ -404,33 +408,38 @@ def based_wise_columns_query(based_on, trans):
 			"Supplier Group:Link/Supplier Group:140",
 		]
 		based_on_details["based_on_select"] = "t1.supplier, t1.supplier_name, t3.supplier_group,"
-		based_on_details["based_on_group_by"] = "t1.supplier"
+		# based_on_details["based_on_group_by"] = "t1.supplier"
+		based_on_details["based_on_group_by"] = """ t1.supplier,t1.supplier_name,t3.supplier_group,t4.default_currency"""
 		based_on_details["addl_tables"] = ",`tabSupplier` t3"
 		based_on_details["addl_tables_relational_cond"] = " and t1.supplier = t3.name"
 
 	elif based_on == "Supplier Group":
 		based_on_details["based_on_cols"] = ["Supplier Group:Link/Supplier Group:140"]
 		based_on_details["based_on_select"] = "t3.supplier_group,"
-		based_on_details["based_on_group_by"] = "t3.supplier_group"
+		# based_on_details["based_on_group_by"] = "t3.supplier_group"
+		based_on_details["based_on_group_by"] = """ t3.supplier_group, t4.default_currency """
 		based_on_details["addl_tables"] = ",`tabSupplier` t3"
 		based_on_details["addl_tables_relational_cond"] = " and t1.supplier = t3.name"
 
 	elif based_on == "Territory":
 		based_on_details["based_on_cols"] = ["Territory:Link/Territory:120"]
 		based_on_details["based_on_select"] = "t1.territory,"
-		based_on_details["based_on_group_by"] = "t1.territory"
+		# based_on_details["based_on_group_by"] = "t1.territory"
+		based_on_details["based_on_group_by"] = """t1.territory,t4.default_currency"""
 		based_on_details["addl_tables"] = ""
 
 	elif based_on == "Project":
 		if trans in ["Sales Invoice", "Delivery Note", "Sales Order"]:
 			based_on_details["based_on_cols"] = ["Project:Link/Project:120"]
 			based_on_details["based_on_select"] = "t1.project,"
-			based_on_details["based_on_group_by"] = "t1.project"
+			# based_on_details["based_on_group_by"] = "t1.project"
+			based_on_details["based_on_group_by"] = """t1.project,t4.default_currency"""
 			based_on_details["addl_tables"] = ""
 		elif trans in ["Purchase Order", "Purchase Invoice", "Purchase Receipt"]:
 			based_on_details["based_on_cols"] = ["Project:Link/Project:120"]
 			based_on_details["based_on_select"] = "t2.project,"
-			based_on_details["based_on_group_by"] = "t2.project"
+			# based_on_details["based_on_group_by"] = "t2.project"
+			based_on_details["based_on_group_by"] = """t2.project, t4.default_currency """
 			based_on_details["addl_tables"] = ""
 		else:
 			frappe.throw(_("Project-wise data is not available for Quotation"))

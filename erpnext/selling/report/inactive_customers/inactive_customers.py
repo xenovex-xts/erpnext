@@ -33,50 +33,136 @@ def execute(filters=None):
 	return columns, data
 
 
+# def get_sales_details(doctype):
+# 	customer = frappe.qb.DocType("Customer")
+# 	sales_doctype = frappe.qb.DocType(doctype)
+
+# 	date_diff = CustomFunction("DATEDIFF", ["d1", "d2"])
+# 	current_date = CustomFunction("CURRENT_DATE", [])
+
+# 	if doctype == "Sales Order":
+# 		total_considered = Sum(
+# 			Case()
+# 			.when(
+# 				sales_doctype.status == "Stopped",
+# 				sales_doctype.base_net_total * sales_doctype.per_delivered / 100,
+# 			)
+# 			.else_(sales_doctype.base_net_total)
+# 		)
+# 		date_col = sales_doctype.transaction_date
+# 	else:
+# 		total_considered = Sum(sales_doctype.base_net_total)
+# 		date_col = sales_doctype.posting_date
+
+# 	last_order_date = Max(date_col)
+# 	days_since_last_order = date_diff(current_date(), last_order_date)
+
+# 	return (
+# 		frappe.qb.from_(customer)
+# 		.inner_join(sales_doctype)
+# 		.on(customer.name == sales_doctype.customer)
+# 		.select(
+# 			customer.name,
+# 			customer.customer_name,
+# 			customer.territory,
+# 			customer.customer_group,
+# 			Count(sales_doctype.name).distinct().as_("num_of_order"),
+# 			Sum(sales_doctype.base_net_total).as_("total_order_value"),
+# 			total_considered.as_("total_order_considered"),
+# 			last_order_date.as_("last_order_date"),
+# 			days_since_last_order.as_("days_since_last_order"),
+# 		)
+# 		.where(sales_doctype.docstatus == 1)
+# 		.groupby(customer.name)
+# 		.orderby(days_since_last_order, order=frappe.qb.desc)
+# 	).run(as_list=True)
 def get_sales_details(doctype):
-	customer = frappe.qb.DocType("Customer")
-	sales_doctype = frappe.qb.DocType(doctype)
+	if doctype == "Sales Invoice":
+		return frappe.db.sql(
+			"""
+			SELECT
+				cust.name,
+				cust.customer_name,
+				cust.territory,
+				cust.customer_group,
 
-	date_diff = CustomFunction("DATEDIFF", ["d1", "d2"])
-	current_date = CustomFunction("CURRENT_DATE", [])
+				COUNT(DISTINCT si.name) AS num_of_order,
 
-	if doctype == "Sales Order":
-		total_considered = Sum(
-			Case()
-			.when(
-				sales_doctype.status == "Stopped",
-				sales_doctype.base_net_total * sales_doctype.per_delivered / 100,
-			)
-			.else_(sales_doctype.base_net_total)
+				SUM(si.base_net_total) AS total_order_value,
+
+				SUM(si.base_net_total) AS total_order_considered,
+
+				MAX(si.posting_date) AS last_order_date,
+
+				(CURRENT_DATE - MAX(si.posting_date))
+					AS days_since_last_order
+
+			FROM
+				"tabCustomer" cust
+			INNER JOIN
+				"tabSales Invoice" si
+					ON cust.name = si.customer
+
+			WHERE
+				si.docstatus = 1
+
+			GROUP BY
+				cust.name,
+				cust.customer_name,
+				cust.territory,
+				cust.customer_group
+
+			ORDER BY
+				days_since_last_order DESC
+			""",
+			as_list=True,
 		)
-		date_col = sales_doctype.transaction_date
-	else:
-		total_considered = Sum(sales_doctype.base_net_total)
-		date_col = sales_doctype.posting_date
 
-	last_order_date = Max(date_col)
-	days_since_last_order = date_diff(current_date(), last_order_date)
+	return frappe.db.sql(
+		"""
+		SELECT
+			cust.name,
+			cust.customer_name,
+			cust.territory,
+			cust.customer_group,
 
-	return (
-		frappe.qb.from_(customer)
-		.inner_join(sales_doctype)
-		.on(customer.name == sales_doctype.customer)
-		.select(
-			customer.name,
-			customer.customer_name,
-			customer.territory,
-			customer.customer_group,
-			Count(sales_doctype.name).distinct().as_("num_of_order"),
-			Sum(sales_doctype.base_net_total).as_("total_order_value"),
-			total_considered.as_("total_order_considered"),
-			last_order_date.as_("last_order_date"),
-			days_since_last_order.as_("days_since_last_order"),
-		)
-		.where(sales_doctype.docstatus == 1)
-		.groupby(customer.name)
-		.orderby(days_since_last_order, order=frappe.qb.desc)
-	).run(as_list=True)
+			COUNT(DISTINCT so.name) AS num_of_order,
 
+			SUM(so.base_net_total) AS total_order_value,
+
+			SUM(
+				CASE
+					WHEN so.status = 'Stopped'
+					THEN so.base_net_total * so.per_delivered / 100
+					ELSE so.base_net_total
+				END
+			) AS total_order_considered,
+
+			MAX(so.transaction_date) AS last_order_date,
+
+			(CURRENT_DATE - MAX(so.transaction_date))
+				AS days_since_last_order
+
+		FROM
+			"tabCustomer" cust
+		INNER JOIN
+			"tabSales Order" so
+				ON cust.name = so.customer
+
+		WHERE
+			so.docstatus = 1
+
+		GROUP BY
+			cust.name,
+			cust.customer_name,
+			cust.territory,
+			cust.customer_group
+
+		ORDER BY
+			days_since_last_order DESC
+		""",
+		as_list=True,
+	)
 
 def get_last_sales_amt(customer, doctype):
 	sales_doctype = frappe.qb.DocType(doctype)

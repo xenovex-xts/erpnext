@@ -5,7 +5,7 @@ import frappe
 from frappe import _, qb, query_builder
 from frappe.query_builder import Criterion, functions
 from frappe.utils.dateutils import getdate
-
+from pypika.terms import Case
 
 def get_columns():
 	columns = [
@@ -170,72 +170,119 @@ def build_filter_criterions(filters):
 	return qb_criterions
 
 
+# def get_so_with_invoices(filters):
+# 	"""
+# 	Get Sales Order with payment terms template with their associated Invoices
+# 	"""
+# 	sorders = []
+
+# 	so = qb.DocType("Sales Order")
+# 	ps = qb.DocType("Payment Schedule")
+# 	soi = qb.DocType("Sales Order Item")
+
+# 	conditions = get_conditions(filters)
+# 	filter_criterions = build_filter_criterions(filters)
+
+# 	datediff = query_builder.CustomFunction("DATEDIFF", ["cur_date", "due_date"])
+# 	ifelse = query_builder.CustomFunction("IF", ["condition", "then", "else"])
+
+# 	query_so = (
+# 		qb.from_(so)
+# 		.join(soi)
+# 		.on(soi.parent == so.name)
+# 		.join(ps)
+# 		.on(ps.parent == so.name)
+# 		.select(so.name)
+# 		.distinct()
+# 		.select(
+# 			so.customer,
+# 			so.transaction_date.as_("submitted"),
+# 			ifelse(datediff(ps.due_date, functions.CurDate()) < 0, "Overdue", "Unpaid").as_("status"),
+# 			ps.payment_term,
+# 			ps.description,
+# 			ps.due_date,
+# 			ps.invoice_portion,
+# 			ps.base_payment_amount,
+# 			ps.paid_amount,
+# 		)
+# 		.where(
+# 			(so.docstatus == 1)
+# 			& (so.status.isin(["To Deliver and Bill", "To Bill", "To Pay"]))
+# 			& (so.company == conditions.company)
+# 			& (so.transaction_date[conditions.start_date : conditions.end_date])
+# 		)
+# 		.where(Criterion.all(filter_criterions))
+# 		.orderby(so.name, so.transaction_date, ps.due_date)
+# 	)
+
+# 	sorders = query_so.run(as_dict=True)
+
+# 	invoices = []
+# 	if sorders != []:
+# 		soi = qb.DocType("Sales Order Item")
+# 		si = qb.DocType("Sales Invoice")
+# 		sii = qb.DocType("Sales Invoice Item")
+# 		query_inv = (
+# 			qb.from_(sii)
+# 			.right_join(si)
+# 			.on(si.name == sii.parent)
+# 			.inner_join(soi)
+# 			.on(soi.name == sii.so_detail)
+# 			.select(sii.sales_order, sii.parent.as_("invoice"), si.base_grand_total.as_("invoice_amount"))
+# 			.where((sii.sales_order.isin([x.name for x in sorders])) & (si.docstatus == 1))
+# 			.groupby(sii.parent)
+# 		)
+# 		invoices = query_inv.run(as_dict=True)
+
+# 	return sorders, invoices
 def get_so_with_invoices(filters):
-	"""
-	Get Sales Order with payment terms template with their associated Invoices
-	"""
-	sorders = []
+        """
+        Get Sales Order with payment terms template with their associated Invoices
+        """
+        sorders = []
 
-	so = qb.DocType("Sales Order")
-	ps = qb.DocType("Payment Schedule")
-	soi = qb.DocType("Sales Order Item")
+        so = qb.DocType("Sales Order")
+        ps = qb.DocType("Payment Schedule")
+        soi = qb.DocType("Sales Order Item")
 
-	conditions = get_conditions(filters)
-	filter_criterions = build_filter_criterions(filters)
+        conditions = get_conditions(filters)
+        filter_criterions = build_filter_criterions(filters)
 
-	datediff = query_builder.CustomFunction("DATEDIFF", ["cur_date", "due_date"])
-	ifelse = query_builder.CustomFunction("IF", ["condition", "then", "else"])
+        query_so = (
+                qb.from_(so)
+                .join(soi)
+                .on(soi.parent == so.name)
+                .join(ps)
+                .on(ps.parent == so.name)
+                .select(so.name)
+                .distinct()
+                .select(
+                        so.customer,
+                        so.transaction_date.as_("submitted"),
+                        Case()
+                                .when(ps.due_date < functions.CurDate(), "Overdue")
+                                .else_("Unpaid")
+                                .as_("status"),
+                        ps.payment_term,
+                        ps.description,
+                        ps.due_date,
+                        ps.invoice_portion,
+                        ps.base_payment_amount,
+                        ps.paid_amount,
+                )
+                .where(
+                        (so.docstatus == 1)
+                        & (so.status.isin(["To Deliver and Bill", "To Bill", "To Pay"]))
+                        & (so.company == conditions.company)
+                        & (so.transaction_date[conditions.start_date : conditions.end_date])
+                )
+                .where(Criterion.all(filter_criterions))
+                .orderby(so.name, so.transaction_date, ps.due_date)
+        )
 
-	query_so = (
-		qb.from_(so)
-		.join(soi)
-		.on(soi.parent == so.name)
-		.join(ps)
-		.on(ps.parent == so.name)
-		.select(so.name)
-		.distinct()
-		.select(
-			so.customer,
-			so.transaction_date.as_("submitted"),
-			ifelse(datediff(ps.due_date, functions.CurDate()) < 0, "Overdue", "Unpaid").as_("status"),
-			ps.payment_term,
-			ps.description,
-			ps.due_date,
-			ps.invoice_portion,
-			ps.base_payment_amount,
-			ps.paid_amount,
-		)
-		.where(
-			(so.docstatus == 1)
-			& (so.status.isin(["To Deliver and Bill", "To Bill", "To Pay"]))
-			& (so.company == conditions.company)
-			& (so.transaction_date[conditions.start_date : conditions.end_date])
-		)
-		.where(Criterion.all(filter_criterions))
-		.orderby(so.name, so.transaction_date, ps.due_date)
-	)
+        sorders = query_so.run(as_dict=True)
 
-	sorders = query_so.run(as_dict=True)
-
-	invoices = []
-	if sorders != []:
-		soi = qb.DocType("Sales Order Item")
-		si = qb.DocType("Sales Invoice")
-		sii = qb.DocType("Sales Invoice Item")
-		query_inv = (
-			qb.from_(sii)
-			.right_join(si)
-			.on(si.name == sii.parent)
-			.inner_join(soi)
-			.on(soi.name == sii.so_detail)
-			.select(sii.sales_order, sii.parent.as_("invoice"), si.base_grand_total.as_("invoice_amount"))
-			.where((sii.sales_order.isin([x.name for x in sorders])) & (si.docstatus == 1))
-			.groupby(sii.parent)
-		)
-		invoices = query_inv.run(as_dict=True)
-
-	return sorders, invoices
-
+        invoices = []
 
 def set_payment_terms_statuses(sales_orders, invoices, filters):
 	"""

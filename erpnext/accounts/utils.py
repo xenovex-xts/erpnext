@@ -1227,8 +1227,19 @@ def get_held_invoices(party_type, party):
 	held_invoices = None
 
 	if party_type == "Supplier":
+		# held_invoices = frappe.db.sql(
+		# 	"select name from `tabPurchase Invoice` where on_hold = 1 and release_date IS NOT NULL and release_date > CURDATE()",
+		# 	as_dict=1,
+		# )
 		held_invoices = frappe.db.sql(
-			"select name from `tabPurchase Invoice` where on_hold = 1 and release_date IS NOT NULL and release_date > CURDATE()",
+			"""
+			select name
+			from `tabPurchase Invoice`
+			where on_hold = 1
+			and release_date IS NOT NULL
+			and release_date > %s
+			""",
+			(nowdate(),),
 			as_dict=1,
 		)
 		held_invoices = set(d["name"] for d in held_invoices)
@@ -2338,7 +2349,8 @@ class QueryPaymentLedger:
 				.where(Criterion.all(self.voucher_posting_date))
 				.groupby(ple.against_voucher_type, ple.against_voucher_no, ple.party_type, ple.party)
 				.orderby(ple.invoice_date, ple.voucher_no)
-				.having(qb.Field("amount_in_account_currency") > 0)
+				# .having(qb.Field("amount_in_account_currency") > 0)
+				.having(Sum(ple.amount_in_account_currency) > 0)
 				.limit(self.limit)
 				.run()
 			)
@@ -2370,7 +2382,19 @@ class QueryPaymentLedger:
 			.where(Criterion.all(self.common_filter))
 			.where(Criterion.all(self.dimensions_filter))
 			.where(Criterion.all(self.voucher_posting_date))
-			.groupby(ple.voucher_type, ple.voucher_no, ple.party_type, ple.party)
+			# .groupby(ple.voucher_type, ple.voucher_no, ple.party_type, ple.party)
+			.groupby(
+				ple.account,
+				ple.voucher_type,
+				ple.voucher_no,
+				ple.party_type,
+				ple.party,
+				ple.posting_date,
+				ple.due_date,
+				ple.account_currency,
+				ple.cost_center,
+				ple.remarks,
+			)
 		)
 
 		# build query for voucher outstanding
@@ -2391,7 +2415,17 @@ class QueryPaymentLedger:
 			.where(ple.delinked == 0)
 			.where(Criterion.all(filter_on_against_voucher_no))
 			.where(Criterion.all(self.common_filter))
-			.groupby(ple.against_voucher_type, ple.against_voucher_no, ple.party_type, ple.party)
+			# .groupby(ple.against_voucher_type, ple.against_voucher_no, ple.party_type, ple.party)
+			.groupby(
+				ple.account,
+				ple.against_voucher_type,
+				ple.against_voucher_no,
+				ple.party_type,
+				ple.party,
+				ple.posting_date,
+				ple.due_date,
+				ple.account_currency,
+			)
 		)
 
 		# build CTE for combining voucher amount and outstanding
@@ -2433,20 +2467,31 @@ class QueryPaymentLedger:
 
 		# build CTE filter
 		# only fetch invoices
+		# if self.get_invoices:
+		# 	self.cte_query_voucher_amount_and_outstanding = (
+		# 		self.cte_query_voucher_amount_and_outstanding.having(
+		# 			qb.Field("outstanding_in_account_currency") > 0
+		# 		)
+		# 	)
 		if self.get_invoices:
 			self.cte_query_voucher_amount_and_outstanding = (
-				self.cte_query_voucher_amount_and_outstanding.having(
-					qb.Field("outstanding_in_account_currency") > 0
+				self.cte_query_voucher_amount_and_outstanding.where(
+					Table("outstanding").amount_in_account_currency > 0
 				)
 			)
 		# only fetch payments
+		# elif self.get_payments:
+		# 	self.cte_query_voucher_amount_and_outstanding = (
+		# 		self.cte_query_voucher_amount_and_outstanding.having(
+		# 			qb.Field("outstanding_in_account_currency") < 0
+		# 		)
+		# 	)
 		elif self.get_payments:
 			self.cte_query_voucher_amount_and_outstanding = (
-				self.cte_query_voucher_amount_and_outstanding.having(
-					qb.Field("outstanding_in_account_currency") < 0
+				self.cte_query_voucher_amount_and_outstanding.where(
+					Table("outstanding").amount_in_account_currency < 0
 				)
 			)
-
 		if self.limit:
 			self.cte_query_voucher_amount_and_outstanding = (
 				self.cte_query_voucher_amount_and_outstanding.limit(self.limit)

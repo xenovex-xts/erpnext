@@ -18,6 +18,7 @@ import erpnext
 from erpnext.accounts.utils import build_qb_match_conditions
 from erpnext.stock.get_item_details import ItemDetailsCtx, _get_item_tax_template
 from erpnext.stock.utils import get_combine_datetime
+from pypika.terms import Case
 
 
 # searches for active employees
@@ -394,7 +395,7 @@ def get_project_name(doctype, txt, searchfield, start, page_len, filters):
 	proj = qb.DocType("Project")
 	qb_filter_and_conditions = []
 	qb_filter_or_conditions = []
-	ifelse = CustomFunction("IF", ["condition", "then", "else"])
+	# ifelse = CustomFunction("IF", ["condition", "then", "else"])
 
 	if filters:
 		if filters.get("customer"):
@@ -428,7 +429,8 @@ def get_project_name(doctype, txt, searchfield, start, page_len, filters):
 	# ordering
 	if txt:
 		# project_name containing search string 'txt' will be given higher precedence
-		q = q.orderby(ifelse(Locate(txt, proj.project_name) > 0, Locate(txt, proj.project_name), 99999))
+		# q = q.orderby(ifelse(Locate(txt, proj.project_name) > 0, Locate(txt, proj.project_name), 99999))
+		q = q.orderby(Case().when(Locate(txt, proj.project_name) > 0,Locate(txt, proj.project_name),).else_(99999))
 	q = q.orderby(proj.idx, order=Order.desc).orderby(proj.name)
 
 	if page_len:

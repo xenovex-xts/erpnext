@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 import frappe
 from frappe import _, qb
-from frappe.query_builder import CustomFunction
+# from frappe.query_builder import CustomFunction
 from frappe.query_builder.functions import Max
 from frappe.utils import date_diff, flt, getdate
 
@@ -147,7 +147,22 @@ def get_data(conditions, filters):
 			{conditions}
 
 		GROUP BY
-			soi.name
+			so.transaction_date,
+            soi.delivery_date,
+            so.name,
+            so.status,
+            so.customer,
+            soi.item_code,
+            soi.qty,
+            soi.delivered_qty,
+            soi.base_amount,
+            soi.base_rate,
+            soi.billed_amt,
+            soi.warehouse,
+            so.company,
+            soi.name,
+            soi.description,
+            so.conversion_rate
 
 		ORDER BY
 			so.transaction_date ASC,
@@ -173,7 +188,7 @@ def get_so_elapsed_time(data):
 		dn = qb.DocType("Delivery Note")
 		dni = qb.DocType("Delivery Note Item")
 
-		to_seconds = CustomFunction("TO_SECONDS", ["date"])
+		# to_seconds = CustomFunction("TO_SECONDS", ["date"])
 
 		query = (
 			qb.from_(so)
@@ -183,20 +198,39 @@ def get_so_elapsed_time(data):
 			.on(dni.so_detail == soi.name)
 			.left_join(dn)
 			.on(dni.parent == dn.name)
+			# .select(
+			# 	so.name.as_("sales_order"),
+			# 	soi.item_code.as_("so_item_code"),
+			# 	(to_seconds(Max(dn.posting_date)) - to_seconds(so.transaction_date)).as_("elapsed_seconds"),
+			# )
 			.select(
 				so.name.as_("sales_order"),
 				soi.item_code.as_("so_item_code"),
-				(to_seconds(Max(dn.posting_date)) - to_seconds(so.transaction_date)).as_("elapsed_seconds"),
+				(Max(dn.posting_date)- so.transaction_date).as_("elapsed_days"),
 			)
 			.where((so.name.isin(sales_orders)) & (dn.docstatus == 1))
 			.orderby(so.name, soi.name)
-			.groupby(soi.name)
+			# .groupby(soi.name)
+			.groupby(
+				so.name,
+				soi.name,
+				soi.item_code,
+				so.transaction_date,
+			)
 		)
 		dn_elapsed_time = query.run(as_dict=True)
 
 		for e in dn_elapsed_time:
 			key = (e.sales_order, e.so_item_code)
-			so_elapsed_time[key] = e.elapsed_seconds
+
+			elapsed = e.elapsed_days or 0
+
+			try:
+				elapsed = elapsed.days
+			except Exception:
+				pass
+
+			so_elapsed_time[key] = elapsed
 
 	return so_elapsed_time
 

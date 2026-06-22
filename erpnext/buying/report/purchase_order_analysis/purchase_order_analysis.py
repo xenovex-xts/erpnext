@@ -71,7 +71,24 @@ def get_data(filters):
 			po_item.name,
 		)
 		.where((po_item.parent == po.name) & (po.status.notin(("Stopped", "On Hold"))) & (po.docstatus == 1))
-		.groupby(po_item.name)
+		# .groupby(po_item.name)
+		.groupby(
+			po.transaction_date,
+			po_item.schedule_date,
+			po_item.project,
+			po.name,
+			po.status,
+			po.supplier,
+			po_item.item_code,
+			po_item.qty,
+			po_item.received_qty,
+			po_item.base_amount,
+			po_item.billed_amt,
+			po.conversion_rate,
+			po.set_warehouse,
+			po.company,
+			po_item.name,
+		)
 		.orderby(po.transaction_date)
 	)
 

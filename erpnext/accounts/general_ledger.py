@@ -24,7 +24,7 @@ from erpnext.accounts.doctype.budget.budget import validate_expense_against_budg
 from erpnext.accounts.utils import create_payment_ledger_entry, is_immutable_ledger_enabled
 from erpnext.controllers.budget_controller import BudgetValidation
 from erpnext.exceptions import InvalidAccountDimensionError, MandatoryAccountDimensionError
-
+from frappe.query_builder.functions import Max
 
 def make_gl_entries(
 	gl_map,
@@ -821,24 +821,54 @@ def check_freezing_date(posting_date, company, adv_adj=False):
 				)
 
 
+# def validate_against_pcv(is_opening, posting_date, company):
+# 	if is_opening and frappe.db.exists("Period Closing Voucher", {"docstatus": 1, "company": company}):
+# 		frappe.throw(
+# 			_("Opening Entry can not be created after Period Closing Voucher is created."),
+# 			title=_("Invalid Opening Entry"),
+# 		)
+
+# 	last_pcv_date = frappe.db.get_value(
+# 		"Period Closing Voucher", {"docstatus": 1, "company": company}, [{"MAX": "period_end_date"}]
+# 	)
+
+# 	if last_pcv_date and getdate(posting_date) <= getdate(last_pcv_date):
+# 		message = _("Books have been closed till the period ending on {0}").format(formatdate(last_pcv_date))
+# 		message += "</br >"
+# 		message += _("You cannot create/amend any accounting entries till this date.")
+# 		frappe.throw(message, title=_("Period Closed"))
+from frappe.query_builder.functions import Max
+
 def validate_against_pcv(is_opening, posting_date, company):
-	if is_opening and frappe.db.exists("Period Closing Voucher", {"docstatus": 1, "company": company}):
-		frappe.throw(
-			_("Opening Entry can not be created after Period Closing Voucher is created."),
-			title=_("Invalid Opening Entry"),
-		)
+    if is_opening and frappe.db.exists(
+        "Period Closing Voucher",
+        {"docstatus": 1, "company": company},
+    ):
+        frappe.throw(
+            _("Opening Entry can not be created after Period Closing Voucher is created."),
+            title=_("Invalid Opening Entry"),
+        )
 
-	last_pcv_date = frappe.db.get_value(
-		"Period Closing Voucher", {"docstatus": 1, "company": company}, [{"MAX": "period_end_date"}]
-	)
+    pcv = frappe.qb.DocType("Period Closing Voucher")
 
-	if last_pcv_date and getdate(posting_date) <= getdate(last_pcv_date):
-		message = _("Books have been closed till the period ending on {0}").format(formatdate(last_pcv_date))
-		message += "</br >"
-		message += _("You cannot create/amend any accounting entries till this date.")
-		frappe.throw(message, title=_("Period Closed"))
+    result = (
+        frappe.qb.from_(pcv)
+        .select(Max(pcv.period_end_date))
+        .where(
+            (pcv.docstatus == 1)
+            & (pcv.company == company)
+        )
+    ).run()
 
+    last_pcv_date = result[0][0] if result and result[0] else None
 
+    if last_pcv_date and getdate(posting_date) <= getdate(last_pcv_date):
+        message = _("Books have been closed till the period ending on {0}").format(
+            formatdate(last_pcv_date)
+        )
+        message += "</br >"
+        message += _("You cannot create/amend any accounting entries till this date.")
+        frappe.throw(message, title=_("Period Closed"))
 def set_as_cancel(voucher_type, voucher_no):
 	"""
 	Set is_cancelled=1 in all original gl entries for the voucher

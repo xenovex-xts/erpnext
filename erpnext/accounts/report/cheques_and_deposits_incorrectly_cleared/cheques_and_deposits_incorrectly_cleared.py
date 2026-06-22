@@ -5,7 +5,7 @@ import frappe
 from frappe import _, qb
 from frappe.query_builder import CustomFunction
 from frappe.query_builder.custom import ConstantColumn
-
+from pypika.terms import Case
 
 def execute(filters=None):
 	columns = get_columns()
@@ -93,7 +93,7 @@ def get_amounts_not_reflected_in_system_for_bank_reconciliation_statement(filter
 		.run(as_dict=1)
 	)
 
-	ifelse = CustomFunction("IF", ["condition", "then", "else"])
+	# ifelse = CustomFunction("IF", ["condition", "then", "else"])
 	pe = qb.DocType("Payment Entry")
 	doctype_name = ConstantColumn("Payment Entry")
 	payments = (
@@ -101,7 +101,16 @@ def get_amounts_not_reflected_in_system_for_bank_reconciliation_statement(filter
 		.select(
 			doctype_name.as_("doctype"),
 			pe.name,
-			ifelse(pe.paid_from.eq(filters.account), pe.paid_amount, pe.received_amount).as_("amount"),
+			# ifelse(pe.paid_from.eq(filters.account), pe.paid_amount, pe.received_amount).as_("amount"),
+			Case()
+				.when(
+						pe.paid_from.eq(filters.account),
+						pe.paid_amount,
+				)
+				.else_(
+						pe.received_amount
+				)
+				.as_("amount")
 			pe.payment_type,
 			pe.party_type,
 			pe.posting_date,
