@@ -1066,10 +1066,22 @@ class StockController(AccountsController):
 	def set_landed_cost_voucher_amount(self):
 		for d in self.get("items"):
 			lcv_item = frappe.qb.DocType("Landed Cost Item")
+			# query = (
+			# 	frappe.qb.from_(lcv_item)
+			# 	.select(Sum(lcv_item.applicable_charges), lcv_item.cost_center)
+			# 	.where((lcv_item.docstatus == 1) & (lcv_item.receipt_document == self.name))
+			# )
 			query = (
 				frappe.qb.from_(lcv_item)
-				.select(Sum(lcv_item.applicable_charges), lcv_item.cost_center)
-				.where((lcv_item.docstatus == 1) & (lcv_item.receipt_document == self.name))
+				.select(
+					Sum(lcv_item.applicable_charges).as_("applicable_charges"),
+					lcv_item.cost_center,
+				)
+				.where(
+					(lcv_item.docstatus == 1)
+					& (lcv_item.receipt_document == self.name)
+				)
+				.groupby(lcv_item.cost_center)
 			)
 
 			if self.doctype == "Stock Entry":

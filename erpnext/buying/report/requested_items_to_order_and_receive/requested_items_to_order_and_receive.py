@@ -72,7 +72,21 @@ def get_data(filters):
 
 	query = get_conditions(filters, query, mr, mr_item)  # add conditional conditions
 
-	query = query.groupby(mr.name, mr_item.item_code).orderby(mr.transaction_date, mr.schedule_date)
+	# query = query.groupby(mr.name, mr_item.item_code).orderby(mr.transaction_date, mr.schedule_date)
+	query = query.groupby(
+		mr.name,
+		mr.transaction_date,
+		mr_item.schedule_date,
+		mr_item.item_code,
+		mr_item.uom,
+		mr_item.stock_uom,
+		mr_item.item_name,
+		mr_item.description,
+		mr.company,
+	).orderby(
+		mr.transaction_date,
+		mr_item.schedule_date,
+	)
 	data = query.run(as_dict=True)
 	return data
 

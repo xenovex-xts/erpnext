@@ -311,15 +311,24 @@ class FIFOSlots:
 			# so batchwise valuation flags must be resolved beforehand
 			self._prefetch_batchwise_valuations()
 
-		with frappe.db.unbuffered_cursor():
-			if stock_ledger_entries is None:
-				stock_ledger_entries = self._get_stock_ledger_entries()
+		# with frappe.db.unbuffered_cursor():
+		# 	if stock_ledger_entries is None:
+		# 		stock_ledger_entries = self._get_stock_ledger_entries()
 
-			for row in stock_ledger_entries:
-				self._process_stock_ledger_entry(row, bundle_wise_serial_nos, bundle_wise_batch_nos)
+		# 	for row in stock_ledger_entries:
+		# 		self._process_stock_ledger_entry(row, bundle_wise_serial_nos, bundle_wise_batch_nos)
 
-			# Note that stock_ledger_entries is an iterator, you can not reuse it like a list
-			del stock_ledger_entries
+		# 	# Note that stock_ledger_entries is an iterator, you can not reuse it like a list
+		# 	del stock_ledger_entries
+
+		if stock_ledger_entries is None:
+			stock_ledger_entries = self._get_stock_ledger_entries()
+
+		for row in stock_ledger_entries:
+			self._process_stock_ledger_entry(row, bundle_wise_serial_nos, bundle_wise_batch_nos)
+
+		# Note that stock_ledger_entries is an iterator, you can not reuse it like a list
+		del stock_ledger_entries
 
 		if not self.filters.get("show_warehouse_wise_stock"):
 			# (Item 1, WH 1), (Item 1, WH 2) => (Item 1)
@@ -942,7 +951,8 @@ class FIFOSlots:
 
 		sle_query = sle_query.orderby(sle.posting_datetime, sle.creation)
 
-		return sle_query.run(as_dict=True, as_iterator=True)
+		# return sle_query.run(as_dict=True, as_iterator=True)
+		return sle_query.run(as_dict=True)
 
 	def _get_bundle_wise_serial_nos(self) -> dict:
 		bundle = frappe.qb.DocType("Serial and Batch Bundle")
