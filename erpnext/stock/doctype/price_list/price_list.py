@@ -53,30 +53,30 @@ class PriceList(Document):
 	# 		(self.currency, cint(self.buying), cint(self.selling), self.name),
 	# 	)
 	def update_item_price(self):
-        if frappe.db.db_type == "postgres":
-                frappe.db.sql(
-                        """
-                        UPDATE "tabItem Price"
-                        SET currency=%s,
-                                buying=%s,
-                                selling=%s,
-                                modified=NOW()
-                        WHERE price_list=%s
-                        """,
-                        (self.currency, cint(self.buying), cint(self.selling), self.name),
-                )
-        else:
-                frappe.db.sql(
-                        """
-                        UPDATE `tabItem Price`
-                        SET currency=%s,
-                                buying=%s,
-                                selling=%s,
-                                modified=NOW()
-                        WHERE price_list=%s
-                        """,
-                        (self.currency, cint(self.buying), cint(self.selling), self.name),
-                )
+		if frappe.db.db_type == "postgres":
+			frappe.db.sql(
+				"""
+				UPDATE "tabItem Price"
+				SET currency=%s,
+					buying=%s,
+					selling=%s,
+					modified=NOW()
+				WHERE price_list=%s
+				""",
+				(self.currency, cint(self.buying), cint(self.selling), self.name),
+			)
+		else:
+			frappe.db.sql(
+				"""
+				UPDATE `tabItem Price`
+				SET currency=%s,
+					buying=%s,
+					selling=%s,
+					modified=NOW()
+				WHERE price_list=%s
+				""",
+				(self.currency, cint(self.buying), cint(self.selling), self.name),
+			)
 
 	def on_trash(self):
 		self.delete_price_list_details_key()
