@@ -1206,6 +1206,20 @@ def make_item_price(item, price_list_name, item_price):
 	).insert()
 
 
+# def get_timeline_data(doctype: str, name: str) -> dict[int, int]:
+# 	"""get timeline data based on Stock Ledger Entry. This is displayed as heatmap on the item page."""
+
+# 	sle = frappe.qb.DocType("Stock Ledger Entry")
+
+# 	return dict(
+# 		frappe.qb.from_(sle)
+# 		.select(UnixTimestamp(sle.posting_date), Count("*"))
+# 		.where(sle.item_code == name)
+# 		.where(sle.posting_date > CurDate() - Interval(years=1))
+# 		.groupby(sle.posting_date)
+# 		.run()
+# 	)
+from frappe.utils import add_years, today
 def get_timeline_data(doctype: str, name: str) -> dict[int, int]:
 	"""get timeline data based on Stock Ledger Entry. This is displayed as heatmap on the item page."""
 
@@ -1215,11 +1229,10 @@ def get_timeline_data(doctype: str, name: str) -> dict[int, int]:
 		frappe.qb.from_(sle)
 		.select(UnixTimestamp(sle.posting_date), Count("*"))
 		.where(sle.item_code == name)
-		.where(sle.posting_date > CurDate() - Interval(years=1))
+		.where(sle.posting_date > add_years(today(), -1))
 		.groupby(sle.posting_date)
 		.run()
 	)
-
 
 def validate_end_of_life(item_code, end_of_life=None, disabled=None):
 	if (not end_of_life) or (disabled is None):

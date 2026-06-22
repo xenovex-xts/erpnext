@@ -595,7 +595,12 @@ class SalesOrder(SellingController):
 
 	def check_modified_date(self):
 		mod_db = frappe.db.get_value("Sales Order", self.name, "modified")
-		date_diff = frappe.db.sql(f"select TIMEDIFF('{mod_db}', '{cstr(self.modified)}')")
+		# date_diff = frappe.db.sql(f"select TIMEDIFF('{mod_db}', '{cstr(self.modified)}')")
+		from frappe.utils import get_datetime
+		date_diff = (
+			get_datetime(mod_db)
+			- get_datetime(self.modified)
+		).total_seconds()
 		if date_diff and date_diff[0][0]:
 			frappe.throw(_("{0} {1} has been modified. Please refresh.").format(self.doctype, self.name))
 

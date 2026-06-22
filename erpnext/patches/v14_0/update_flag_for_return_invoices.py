@@ -14,7 +14,8 @@ def execute():
 	si = qb.DocType("Sales Invoice")
 
 	# unset flag, as migration would have set it for all records, as the field was introduced with default '1'
-	qb.update(si).set(si.update_outstanding_for_self, False).run()
+	# qb.update(si).set(si.update_outstanding_for_self, False).run()
+	qb.update(si).set(si.update_outstanding_for_self, 0).run()
 
 	if cr_notes := (
 		qb.from_(si)
@@ -36,14 +37,16 @@ def execute():
 			.run()
 		):
 			docs_that_require_update = [x[0] for x in docs_that_require_update]
-			qb.update(si).set(si.update_outstanding_for_self, True).where(
+			# qb.update(si).set(si.update_outstanding_for_self, True).where(
+			qb.update(si).set(si.update_outstanding_for_self, 1).where(
 				si.name.isin(docs_that_require_update)
 			).run()
 
 	pi = qb.DocType("Purchase Invoice")
 
 	# unset flag, as migration would have set it for all records, as the field was introduced with default '1'
-	qb.update(pi).set(pi.update_outstanding_for_self, False).run()
+	# qb.update(pi).set(pi.update_outstanding_for_self, False).run()
+	qb.update(pi).set(pi.update_outstanding_for_self, 0).run()
 
 	if dr_notes := (
 		qb.from_(pi)
@@ -65,6 +68,7 @@ def execute():
 			.run()
 		):
 			docs_that_require_update = [x[0] for x in docs_that_require_update]
-			qb.update(pi).set(pi.update_outstanding_for_self, True).where(
+			# qb.update(pi).set(pi.update_outstanding_for_self, True).where(
+			qb.update(pi).set(pi.update_outstanding_for_self, 1).where(
 				pi.name.isin(docs_that_require_update)
 			).run()

@@ -9,7 +9,7 @@ import frappe
 from frappe import ValidationError, _, qb, scrub, throw
 from frappe.model.meta import get_field_precision
 from frappe.query_builder import Tuple
-from frappe.query_builder.functions import Count
+from frappe.query_builder.functions import Count, Max
 from frappe.utils import cint, comma_or, flt, getdate, nowdate
 from frappe.utils.data import comma_and, fmt_money, get_link_to_form
 from pypika import Case
@@ -2140,7 +2140,8 @@ def get_matched_payment_request_of_references(references=None):
 			PR.reference_doctype,
 			PR.reference_name,
 			PR.outstanding_amount.as_("allocated_amount"),
-			PR.name.as_("payment_request"),
+			# PR.name.as_("payment_request"),
+			Max(PR.name).as_("payment_request"),
 			Count("*").as_("count"),
 		)
 		.where(Tuple(PR.reference_doctype, PR.reference_name, PR.outstanding_amount).isin(refs))

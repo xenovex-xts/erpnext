@@ -2233,7 +2233,8 @@ def delink_original_entry(pl_entry, partial_cancel=False):
 			qb.update(ple)
 			.set(ple.modified, now())
 			.set(ple.modified_by, frappe.session.user)
-			.set(ple.delinked, True)
+			# .set(ple.delinked, True)
+			.set(ple.delinked,1)
 			.where(
 				(ple.company == pl_entry.company)
 				& (ple.account_type == pl_entry.account_type)
@@ -2361,70 +2362,122 @@ class QueryPaymentLedger:
 				)
 
 		# build query for voucher amount
+		# query_voucher_amount = (
+		# 	qb.from_(ple)
+		# 	.select(
+		# 		ple.account,
+		# 		ple.voucher_type,
+		# 		ple.voucher_no,
+		# 		ple.party_type,
+		# 		ple.party,
+		# 		ple.posting_date,
+		# 		ple.due_date,
+		# 		ple.account_currency.as_("currency"),
+		# 		ple.cost_center.as_("cost_center"),
+		# 		Sum(ple.amount).as_("amount"),
+		# 		Sum(ple.amount_in_account_currency).as_("amount_in_account_currency"),
+		# 		ple.remarks,
+		# 	)
+		# 	.where(ple.delinked == 0)
+		# 	.where(Criterion.all(filter_on_voucher_no))
+		# 	.where(Criterion.all(self.common_filter))
+		# 	.where(Criterion.all(self.dimensions_filter))
+		# 	.where(Criterion.all(self.voucher_posting_date))
+		# 	# .groupby(ple.voucher_type, ple.voucher_no, ple.party_type, ple.party)
+		# 	.groupby(
+		# 		ple.account,
+		# 		ple.voucher_type,
+		# 		ple.voucher_no,
+		# 		ple.party_type,
+		# 		ple.party,
+		# 		ple.posting_date,
+		# 		ple.due_date,
+		# 		ple.account_currency,
+		# 		ple.cost_center,
+		# 		ple.remarks,
+		# 	)
+		# )
 		query_voucher_amount = (
 			qb.from_(ple)
 			.select(
-				ple.account,
+				Max(ple.account).as_("account"),
 				ple.voucher_type,
 				ple.voucher_no,
 				ple.party_type,
 				ple.party,
-				ple.posting_date,
-				ple.due_date,
-				ple.account_currency.as_("currency"),
-				ple.cost_center.as_("cost_center"),
+				Max(ple.posting_date).as_("posting_date"),
+				Max(ple.due_date).as_("due_date"),
+				Max(ple.account_currency).as_("currency"),
+				Max(ple.cost_center).as_("cost_center"),
 				Sum(ple.amount).as_("amount"),
 				Sum(ple.amount_in_account_currency).as_("amount_in_account_currency"),
-				ple.remarks,
+				Max(ple.remarks).as_("remarks"),
 			)
 			.where(ple.delinked == 0)
 			.where(Criterion.all(filter_on_voucher_no))
 			.where(Criterion.all(self.common_filter))
 			.where(Criterion.all(self.dimensions_filter))
 			.where(Criterion.all(self.voucher_posting_date))
-			# .groupby(ple.voucher_type, ple.voucher_no, ple.party_type, ple.party)
 			.groupby(
-				ple.account,
 				ple.voucher_type,
 				ple.voucher_no,
 				ple.party_type,
 				ple.party,
-				ple.posting_date,
-				ple.due_date,
-				ple.account_currency,
-				ple.cost_center,
-				ple.remarks,
 			)
 		)
 
 		# build query for voucher outstanding
+		# query_voucher_outstanding = (
+		# 	qb.from_(ple)
+		# 	.select(
+		# 		ple.account,
+		# 		ple.against_voucher_type.as_("voucher_type"),
+		# 		ple.against_voucher_no.as_("voucher_no"),
+		# 		ple.party_type,
+		# 		ple.party,
+		# 		ple.posting_date,
+		# 		ple.due_date,
+		# 		ple.account_currency.as_("currency"),
+		# 		Sum(ple.amount).as_("amount"),
+		# 		Sum(ple.amount_in_account_currency).as_("amount_in_account_currency"),
+		# 	)
+		# 	.where(ple.delinked == 0)
+		# 	.where(Criterion.all(filter_on_against_voucher_no))
+		# 	.where(Criterion.all(self.common_filter))
+		# 	# .groupby(ple.against_voucher_type, ple.against_voucher_no, ple.party_type, ple.party)
+		# 	.groupby(
+		# 		ple.account,
+		# 		ple.against_voucher_type,
+		# 		ple.against_voucher_no,
+		# 		ple.party_type,
+		# 		ple.party,
+		# 		ple.posting_date,
+		# 		ple.due_date,
+		# 		ple.account_currency,
+		# 	)
+		# )
 		query_voucher_outstanding = (
 			qb.from_(ple)
 			.select(
-				ple.account,
+				Max(ple.account).as_("account"),
 				ple.against_voucher_type.as_("voucher_type"),
 				ple.against_voucher_no.as_("voucher_no"),
 				ple.party_type,
 				ple.party,
-				ple.posting_date,
-				ple.due_date,
-				ple.account_currency.as_("currency"),
+				Max(ple.posting_date).as_("posting_date"),
+				Max(ple.due_date).as_("due_date"),
+				Max(ple.account_currency).as_("currency"),
 				Sum(ple.amount).as_("amount"),
 				Sum(ple.amount_in_account_currency).as_("amount_in_account_currency"),
 			)
 			.where(ple.delinked == 0)
 			.where(Criterion.all(filter_on_against_voucher_no))
 			.where(Criterion.all(self.common_filter))
-			# .groupby(ple.against_voucher_type, ple.against_voucher_no, ple.party_type, ple.party)
 			.groupby(
-				ple.account,
 				ple.against_voucher_type,
 				ple.against_voucher_no,
 				ple.party_type,
 				ple.party,
-				ple.posting_date,
-				ple.due_date,
-				ple.account_currency,
 			)
 		)
 
@@ -2496,6 +2549,14 @@ class QueryPaymentLedger:
 			self.cte_query_voucher_amount_and_outstanding = (
 				self.cte_query_voucher_amount_and_outstanding.limit(self.limit)
 			)
+		
+		result = self.cte_query_voucher_amount_and_outstanding.run(as_dict=True)
+
+		# print("\n===== RESULT =====")
+		# print(result)
+		# print("==================\n")
+
+		self.voucher_outstandings = result
 
 		# execute SQL
 		self.voucher_outstandings = self.cte_query_voucher_amount_and_outstanding.run(as_dict=True)
