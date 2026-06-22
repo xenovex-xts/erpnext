@@ -247,17 +247,37 @@ class MaterialRequest(BuyingController):
 
 		self.set_status(update=True, status="Cancelled")
 
+	# def check_modified_date(self):
+	# 	mod_db = frappe.db.sql("""select modified from `tabMaterial Request` where name = %s""", self.name)
+	# 	# date_diff = frappe.db.sql("""select TIMEDIFF(%s, %s)""", (mod_db[0][0], cstr(self.modified)))
+	# 	from frappe.utils import get_datetime
+	# 	date_diff = (
+	# 		get_datetime(mod_db[0][0])
+	# 		- get_datetime(self.modified)
+	# 	)
+
+	# 	if date_diff and date_diff[0][0]:
+	# 		frappe.throw(_("{0} {1} has been modified. Please refresh.").format(_(self.doctype), self.name))
 	def check_modified_date(self):
-		mod_db = frappe.db.sql("""select modified from `tabMaterial Request` where name = %s""", self.name)
-		# date_diff = frappe.db.sql("""select TIMEDIFF(%s, %s)""", (mod_db[0][0], cstr(self.modified)))
+		mod_db = frappe.db.sql(
+			"""select modified from `tabMaterial Request` where name = %s""",
+			self.name,
+		)
+
 		from frappe.utils import get_datetime
+
 		date_diff = (
 			get_datetime(mod_db[0][0])
 			- get_datetime(self.modified)
-		)
+		).total_seconds()
 
-		if date_diff and date_diff[0][0]:
-			frappe.throw(_("{0} {1} has been modified. Please refresh.").format(_(self.doctype), self.name))
+		if date_diff:
+			frappe.throw(
+				_("{0} {1} has been modified. Please refresh.").format(
+					_(self.doctype),
+					self.name,
+				)
+			)
 
 	def update_status(self, status):
 		self.check_modified_date()

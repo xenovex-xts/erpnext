@@ -276,24 +276,94 @@ def get_bin_list(filters):
 	return bin_list
 
 
+# def get_item_map(item_code, include_uom):
+# 	"""Optimization: get only the item doc and re_order_levels table"""
+
+# 	bin = frappe.qb.DocType("Bin")
+# 	item = frappe.qb.DocType("Item")
+
+# 	query = (
+# 		frappe.qb.from_(item)
+# 		.select(item.name, item.item_name, item.description, item.item_group, item.brand, item.stock_uom)
+# 		.where(
+# 			(item.is_stock_item == 1)
+# 			& (item.disabled == 0)
+# 			& (
+# 				(item.end_of_life > today())
+# 				| (item.end_of_life.isnull())
+# 				| (item.end_of_life == "0000-00-00")
+# 			)
+# 			& (ExistsCriterion(frappe.qb.from_(bin).select(bin.name).where(bin.item_code == item.name)))
+# 		)
+# 	)
+
+# 	if item_code:
+# 		query = query.where(item.item_code == item_code)
+
+# 	if include_uom:
+# 		ucd = frappe.qb.DocType("UOM Conversion Detail")
+# 		query = query.select(ucd.conversion_factor)
+# 		query = query.left_join(ucd).on((ucd.parent == item.name) & (ucd.uom == include_uom))
+
+# 	items = query.run(as_dict=True)
+
+# 	ir = frappe.qb.DocType("Item Reorder")
+# 	query = frappe.qb.from_(ir).select("*")
+
+# 	if item_code:
+# 		query = query.where(ir.parent == item_code)
+
+# 	reorder_levels = frappe._dict()
+# 	for d in query.run(as_dict=True):
+# 		if d.parent not in reorder_levels:
+# 			reorder_levels[d.parent] = []
+
+# 		reorder_levels[d.parent].append(d)
+
+# 	item_map = frappe._dict()
+# 	for item in items:
+# 		item["reorder_levels"] = reorder_levels.get(item.name) or []
+# 		item_map[item.name] = item
+
+# 	return item_map
+
 def get_item_map(item_code, include_uom):
 	"""Optimization: get only the item doc and re_order_levels table"""
 
 	bin = frappe.qb.DocType("Bin")
 	item = frappe.qb.DocType("Item")
 
+	# PostgreSQL does not support MariaDB's zero date '0000-00-00'
+	eol_condition = (
+		(item.end_of_life > today())
+		| (item.end_of_life.isnull())
+	)
+
+	# Keep MariaDB compatibility
+	if frappe.db.db_type != "postgres":
+		eol_condition = eol_condition | (item.end_of_life == "0000-00-00")
+
 	query = (
 		frappe.qb.from_(item)
-		.select(item.name, item.item_name, item.description, item.item_group, item.brand, item.stock_uom)
+		.select(
+			item.name,
+			item.item_name,
+			item.description,
+			item.item_group,
+			item.brand,
+			item.stock_uom,
+		)
 		.where(
 			(item.is_stock_item == 1)
 			& (item.disabled == 0)
+			& eol_condition
 			& (
-				(item.end_of_life > today())
-				| (item.end_of_life.isnull())
-				| (item.end_of_life == "0000-00-00")
+				ExistsCriterion(
+					frappe.qb.from_(bin)
+					.select(bin.name)
+					.where(bin.item_code == item.name)
+				)
 			)
-			& (ExistsCriterion(frappe.qb.from_(bin).select(bin.name).where(bin.item_code == item.name)))
 		)
 	)
 
@@ -302,18 +372,25 @@ def get_item_map(item_code, include_uom):
 
 	if include_uom:
 		ucd = frappe.qb.DocType("UOM Conversion Detail")
+
 		query = query.select(ucd.conversion_factor)
-		query = query.left_join(ucd).on((ucd.parent == item.name) & (ucd.uom == include_uom))
+
+		query = query.left_join(ucd).on(
+			(ucd.parent == item.name)
+			& (ucd.uom == include_uom)
+		)
 
 	items = query.run(as_dict=True)
 
 	ir = frappe.qb.DocType("Item Reorder")
+
 	query = frappe.qb.from_(ir).select("*")
 
 	if item_code:
 		query = query.where(ir.parent == item_code)
 
 	reorder_levels = frappe._dict()
+
 	for d in query.run(as_dict=True):
 		if d.parent not in reorder_levels:
 			reorder_levels[d.parent] = []
@@ -321,8 +398,9 @@ def get_item_map(item_code, include_uom):
 		reorder_levels[d.parent].append(d)
 
 	item_map = frappe._dict()
-	for item in items:
-		item["reorder_levels"] = reorder_levels.get(item.name) or []
-		item_map[item.name] = item
+
+	for item_row in items:
+		item_row["reorder_levels"] = reorder_levels.get(item_row.name) or []
+		item_map[item_row.name] = item_row
 
 	return item_map
