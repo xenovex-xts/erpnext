@@ -547,7 +547,13 @@ def get_accounting_entries(
 	ignore_is_opening = frappe.get_single_value("Accounts Settings", "ignore_is_opening_check_for_reporting")
 
 	if doctype == "GL Entry":
-		query = query.select(gl_entry.posting_date, gl_entry.is_opening, gl_entry.fiscal_year)
+		if not group_by_account:
+			query = query.select(
+				gl_entry.posting_date,
+				gl_entry.is_opening,
+				gl_entry.fiscal_year,
+			)
+
 		query = query.where(gl_entry.is_cancelled == 0)
 		query = query.where(gl_entry.posting_date <= to_date)
 		# query = query.force_index("posting_date_company_index")
@@ -567,7 +573,10 @@ def get_accounting_entries(
 		query = query.where(ExistsCriterion(account_filter_query))
 
 	if group_by_account:
-		query = query.groupby("account")
+		query = query.groupby(
+			gl_entry.account,
+			gl_entry.account_currency,
+		)
 
 	from frappe.desk.reportview import build_match_conditions
 

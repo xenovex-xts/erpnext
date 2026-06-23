@@ -855,33 +855,57 @@ def get_sre_reserved_qty_details_for_voucher(voucher_type: str, voucher_no: str)
 	return frappe._dict(data)
 
 
+# def get_sre_reserved_warehouses_for_voucher(
+# 	voucher_type: str, voucher_no: str, voucher_detail_no: str | None = None
+# ) -> list:
+# 	"""Returns a list of warehouses where the stock is reserved for the provided voucher."""
+
+# 	sre = frappe.qb.DocType("Stock Reservation Entry")
+# 	query = (
+# 		frappe.qb.from_(sre)
+# 		.select(sre.warehouse)
+# 		.distinct()
+# 		.where(
+# 			(sre.docstatus == 1)
+# 			& (sre.voucher_type == voucher_type)
+# 			& (sre.voucher_no == voucher_no)
+# 			& (sre.delivered_qty < sre.reserved_qty)
+# 		)
+# 		.orderby(sre.creation)
+# 	)
+
+# 	if voucher_detail_no:
+# 		query = query.where(sre.voucher_detail_no == voucher_detail_no)
+
+# 	warehouses = query.run(as_list=True)
+
+# 	return [d[0] for d in warehouses] if warehouses else []
+
 def get_sre_reserved_warehouses_for_voucher(
-	voucher_type: str, voucher_no: str, voucher_detail_no: str | None = None
+        voucher_type: str, voucher_no: str, voucher_detail_no: str | None = None
 ) -> list:
-	"""Returns a list of warehouses where the stock is reserved for the provided voucher."""
+        """Returns a list of warehouses where the stock is reserved for the provided voucher."""
 
-	sre = frappe.qb.DocType("Stock Reservation Entry")
-	query = (
-		frappe.qb.from_(sre)
-		.select(sre.warehouse)
-		.distinct()
-		.where(
-			(sre.docstatus == 1)
-			& (sre.voucher_type == voucher_type)
-			& (sre.voucher_no == voucher_no)
-			& (sre.delivered_qty < sre.reserved_qty)
-		)
-		.orderby(sre.creation)
-	)
+        sre = frappe.qb.DocType("Stock Reservation Entry")
+        query = (
+                frappe.qb.from_(sre)
+                .select(sre.warehouse)
+                .distinct()
+                .where(
+                        (sre.docstatus == 1)
+                        & (sre.voucher_type == voucher_type)
+                        & (sre.voucher_no == voucher_no)
+                        & (sre.delivered_qty < sre.reserved_qty)
+                )
+        )
 
-	if voucher_detail_no:
-		query = query.where(sre.voucher_detail_no == voucher_detail_no)
+        if voucher_detail_no:
+                query = query.where(sre.voucher_detail_no == voucher_detail_no)
 
-	warehouses = query.run(as_list=True)
+        warehouses = query.run(as_list=True)
 
-	return [d[0] for d in warehouses] if warehouses else []
-
-
+        return [d[0] for d in warehouses] if warehouses else []
+		
 def get_sre_reserved_qty_for_voucher_detail_no(
 	item_code: str,
 	voucher_type: str,

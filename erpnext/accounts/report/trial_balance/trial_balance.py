@@ -236,6 +236,19 @@ def get_opening_balance(
 	closing_balance = frappe.qb.DocType(doctype)
 	accounts = frappe.db.get_all("Account", filters={"report_type": report_type}, pluck="name")
 
+	# opening_balance = (
+	# 	frappe.qb.from_(closing_balance)
+	# 	.select(
+	# 		closing_balance.account,
+	# 		closing_balance.account_currency,
+	# 		Sum(closing_balance.debit).as_("debit"),
+	# 		Sum(closing_balance.credit).as_("credit"),
+	# 		Sum(closing_balance.debit_in_account_currency).as_("debit_in_account_currency"),
+	# 		Sum(closing_balance.credit_in_account_currency).as_("credit_in_account_currency"),
+	# 	)
+	# 	.where((closing_balance.company == filters.company) & (closing_balance.account.isin(accounts)))
+	# 	.groupby(closing_balance.account)
+	# )
 	opening_balance = (
 		frappe.qb.from_(closing_balance)
 		.select(
@@ -247,7 +260,10 @@ def get_opening_balance(
 			Sum(closing_balance.credit_in_account_currency).as_("credit_in_account_currency"),
 		)
 		.where((closing_balance.company == filters.company) & (closing_balance.account.isin(accounts)))
-		.groupby(closing_balance.account)
+		.groupby(
+			closing_balance.account,
+			closing_balance.account_currency,
+		)
 	)
 
 	if not ignore_reporting_currency:

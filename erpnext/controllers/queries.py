@@ -778,8 +778,25 @@ def get_filtered_dimensions(doctype, txt, searchfield, start, page_len, filters,
 	if meta.has_field("company"):
 		query_filters.append(["company", "=", filters.get("company")])
 
+	# for field in searchfields:
+	# 	or_filters.append([field, "LIKE", "%%%s%%" % txt])
+	# 	fields.append(field)
 	for field in searchfields:
-		or_filters.append([field, "LIKE", "%%%s%%" % txt])
+		df = meta.get_field(field)
+
+		if df and df.fieldtype not in (
+			"Data",
+			"Link",
+			"Dynamic Link",
+			"Select",
+			"Small Text",
+			"Text",
+			"Text Editor",
+			"Read Only",
+		):
+			continue
+
+		or_filters.append([field, "LIKE", f"%{txt}%"])
 		fields.append(field)
 
 	if dimension_filters:

@@ -305,7 +305,8 @@ def get_po_entries(filters):
 			& (parent.name == child.parent)
 			& (parent.status.notin(("Closed", "Completed", "Cancelled")))
 		)
-		.groupby(parent.name, child.material_request_item)
+		# .groupby(parent.name, child.material_request_item)
+		
 	)
 	query = apply_filters_on_query(filters, parent, child, query)
 

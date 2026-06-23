@@ -493,15 +493,36 @@ def get_internal_invoice_map(invoice_list):
 
 
 def get_invoice_tax_map(invoice_list, invoice_expense_map, expense_accounts, include_payments=False):
+	# tax_details = frappe.db.sql(
+	# 	"""
+	# 	select parent, account_head, case add_deduct_tax when "Add" then sum(base_tax_amount_after_discount_amount)
+	# 	else sum(base_tax_amount_after_discount_amount) * -1 end as tax_amount
+	# 	from `tabPurchase Taxes and Charges`
+	# 	where parent in (%s) and category in ('Total', 'Valuation and Total')
+	# 		and base_tax_amount_after_discount_amount != 0 and parenttype='Purchase Invoice'
+	# 	group by parent, account_head, add_deduct_tax
+	# """
+	# 	% ", ".join(["%s"] * len(invoice_list)),
+	# 	tuple(inv.name for inv in invoice_list),
+	# 	as_dict=1,
+	# )
 	tax_details = frappe.db.sql(
 		"""
-		select parent, account_head, case add_deduct_tax when "Add" then sum(base_tax_amount_after_discount_amount)
-		else sum(base_tax_amount_after_discount_amount) * -1 end as tax_amount
+		select
+			parent,
+			account_head,
+			case
+				when add_deduct_tax = 'Add'
+				then sum(base_tax_amount_after_discount_amount)
+				else sum(base_tax_amount_after_discount_amount) * -1
+			end as tax_amount
 		from `tabPurchase Taxes and Charges`
-		where parent in (%s) and category in ('Total', 'Valuation and Total')
-			and base_tax_amount_after_discount_amount != 0 and parenttype='Purchase Invoice'
+		where parent in (%s)
+			and category in ('Total', 'Valuation and Total')
+			and base_tax_amount_after_discount_amount != 0
+			and parenttype = 'Purchase Invoice'
 		group by parent, account_head, add_deduct_tax
-	"""
+		"""
 		% ", ".join(["%s"] * len(invoice_list)),
 		tuple(inv.name for inv in invoice_list),
 		as_dict=1,

@@ -7,6 +7,7 @@ from frappe import _
 from frappe.query_builder import CustomFunction
 from frappe.utils import cint
 from frappe.query_builder import functions
+from pypika.terms import LiteralValue
 
 def execute(filters=None):
 	columns = get_columns()
@@ -107,13 +108,21 @@ def get_sales_details(filters):
 
 	# date_col = parent.transaction_date if filters["based_on"] == "Sales Order" else parent.posting_date
 	# days_since_last_order = date_diff(current_date(), date_col)
+	# date_col = (
+	# 	parent.transaction_date
+	# 	if filters["based_on"] == "Sales Order"
+	# 	else parent.posting_date
+	# )
+
+	# days_since_last_order = (functions.CurDate() - date_col)
 	date_col = (
-		parent.transaction_date
-		if filters["based_on"] == "Sales Order"
-		else parent.posting_date
+        parent.transaction_date
+        if filters["based_on"] == "Sales Order"
+        else parent.posting_date
 	)
 
-	days_since_last_order = (functions.CurDate() - date_col)
+	current_date = LiteralValue("CURRENT_DATE")
+	days_since_last_order = (current_date - date_col)
 
 	sales_data = (
 		frappe.qb.from_(parent)

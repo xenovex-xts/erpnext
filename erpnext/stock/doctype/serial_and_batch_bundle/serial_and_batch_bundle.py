@@ -3057,7 +3057,12 @@ def get_available_batches(kwargs):
 		)
 		.where(batch_table.disabled == 0)
 		.where(stock_ledger_entry.is_cancelled == 0)
-		.groupby(batch_ledger.batch_no, batch_ledger.warehouse)
+		# .groupby(batch_ledger.batch_no, batch_ledger.warehouse)
+		.groupby(
+			batch_ledger.batch_no,
+			batch_ledger.warehouse,
+			batch_table.expiry_date,
+		)
 	)
 
 	if kwargs.get("company"):

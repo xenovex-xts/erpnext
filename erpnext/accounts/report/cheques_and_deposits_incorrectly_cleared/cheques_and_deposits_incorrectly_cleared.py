@@ -110,7 +110,7 @@ def get_amounts_not_reflected_in_system_for_bank_reconciliation_statement(filter
 				.else_(
 						pe.received_amount
 				)
-				.as_("amount")
+				.as_("amount"),
 			pe.payment_type,
 			pe.party_type,
 			pe.posting_date,

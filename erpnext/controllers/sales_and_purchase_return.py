@@ -375,50 +375,101 @@ def get_returned_qty_map_for_purchase_flow(return_against, supplier, row_name, d
 	return _return_map
 
 
+# def get_returned_qty_map_for_row(return_against, party, row_name, doctype):
+# 	child_doctype = doctype + " Item"
+# 	reference_field = "dn_detail" if doctype == "Delivery Note" else frappe.scrub(child_doctype)
+
+# 	if doctype in ("Purchase Receipt", "Purchase Invoice", "Subcontracting Receipt"):
+# 		party_type = "supplier"
+# 	else:
+# 		party_type = "customer"
+
+# 	fields = [
+# 		{"SUM": [{"ABS": f"`tab{child_doctype}`.qty"}], "as": "qty"},
+# 	]
+
+# 	if doctype != "Subcontracting Receipt":
+# 		fields += [
+# 			{"SUM": [{"ABS": f"`tab{child_doctype}`.stock_qty"}], "as": "stock_qty"},
+# 		]
+
+# 	if doctype in ("Purchase Receipt", "Purchase Invoice", "Subcontracting Receipt"):
+# 		fields += [
+# 			{"SUM": [{"ABS": f"`tab{child_doctype}`.rejected_qty"}], "as": "rejected_qty"},
+# 			{"SUM": [{"ABS": f"`tab{child_doctype}`.received_qty"}], "as": "received_qty"},
+# 		]
+
+# 		if doctype == "Purchase Receipt":
+# 			fields += [
+# 				{"SUM": [{"ABS": f"`tab{child_doctype}`.received_stock_qty"}], "as": "received_stock_qty"}
+# 			]
+
+# 	# Used retrun against and supplier and is_retrun because there is an index added for it
+# 	data = frappe.get_all(
+# 		doctype,
+# 		fields=fields,
+# 		filters=[
+# 			[doctype, "return_against", "=", return_against],
+# 			[doctype, party_type, "=", party],
+# 			[doctype, "docstatus", "=", 1],
+# 			[doctype, "is_return", "=", 1],
+# 			[child_doctype, reference_field, "=", row_name],
+# 		],
+# 	)
+
+# 	return data[0]
 def get_returned_qty_map_for_row(return_against, party, row_name, doctype):
-	child_doctype = doctype + " Item"
-	reference_field = "dn_detail" if doctype == "Delivery Note" else frappe.scrub(child_doctype)
+    parent = frappe.qb.DocType(doctype)
+    child = frappe.qb.DocType(f"{doctype} Item")
 
-	if doctype in ("Purchase Receipt", "Purchase Invoice", "Subcontracting Receipt"):
-		party_type = "supplier"
-	else:
-		party_type = "customer"
+    reference_field = (
+        "dn_detail"
+        if doctype == "Delivery Note"
+        else frappe.scrub(f"{doctype} Item")
+    )
 
-	fields = [
-		{"SUM": [{"ABS": f"`tab{child_doctype}`.qty"}], "as": "qty"},
-	]
+    if doctype in ("Purchase Receipt", "Purchase Invoice", "Subcontracting Receipt"):
+        party_type = "supplier"
+    else:
+        party_type = "customer"
 
-	if doctype != "Subcontracting Receipt":
-		fields += [
-			{"SUM": [{"ABS": f"`tab{child_doctype}`.stock_qty"}], "as": "stock_qty"},
-		]
+    query = (
+        frappe.qb.from_(parent)
+        .inner_join(child)
+        .on(child.parent == parent.name)
+    )
 
-	if doctype in ("Purchase Receipt", "Purchase Invoice", "Subcontracting Receipt"):
-		fields += [
-			{"SUM": [{"ABS": f"`tab{child_doctype}`.rejected_qty"}], "as": "rejected_qty"},
-			{"SUM": [{"ABS": f"`tab{child_doctype}`.received_qty"}], "as": "received_qty"},
-		]
+    query = query.select(
+        Sum(Abs(child.qty)).as_("qty")
+    )
 
-		if doctype == "Purchase Receipt":
-			fields += [
-				{"SUM": [{"ABS": f"`tab{child_doctype}`.received_stock_qty"}], "as": "received_stock_qty"}
-			]
+    if doctype != "Subcontracting Receipt":
+        query = query.select(
+            Sum(Abs(child.stock_qty)).as_("stock_qty")
+        )
 
-	# Used retrun against and supplier and is_retrun because there is an index added for it
-	data = frappe.get_all(
-		doctype,
-		fields=fields,
-		filters=[
-			[doctype, "return_against", "=", return_against],
-			[doctype, party_type, "=", party],
-			[doctype, "docstatus", "=", 1],
-			[doctype, "is_return", "=", 1],
-			[child_doctype, reference_field, "=", row_name],
-		],
-	)
+    if doctype in ("Purchase Receipt", "Purchase Invoice", "Subcontracting Receipt"):
+        query = query.select(
+            Sum(Abs(child.rejected_qty)).as_("rejected_qty"),
+            Sum(Abs(child.received_qty)).as_("received_qty"),
+        )
 
-	return data[0]
+        if doctype == "Purchase Receipt":
+            query = query.select(
+                Sum(Abs(child.received_stock_qty)).as_("received_stock_qty")
+            )
 
+    query = query.where(
+        (parent.return_against == return_against)
+        & (getattr(parent, party_type) == party)
+        & (parent.docstatus == 1)
+        & (parent.is_return == 1)
+        & (getattr(child, reference_field) == row_name)
+    )
+
+    data = query.run(as_dict=True)
+
+    return data[0] if data else {}
 
 def make_return_doc(doctype: str, source_name: str, target_doc=None, return_against_rejected_qty=False):
 	from frappe.model.mapper import get_mapped_doc

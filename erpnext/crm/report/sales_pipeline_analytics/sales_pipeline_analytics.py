@@ -12,6 +12,7 @@ from frappe.query_builder.custom import Month, MonthName, Quarter
 from frappe.utils import cint, flt, getdate
 
 from erpnext.setup.utils import get_exchange_rate
+from pypika import CustomFunction
 
 
 def execute(filters=None):
@@ -86,27 +87,64 @@ class SalesPipelineAnalytics:
 		opp = frappe.qb.DocType("Opportunity")
 
 		if self.filters.get("range") == "Monthly":
-			self.group_by_period = Month(opp.expected_closing)
-			self.duration = MonthName(opp.expected_closing).as_("month")
+
+			if frappe.db.db_type == "postgres":
+				ToChar = CustomFunction("TO_CHAR", ["date", "format"])
+
+				month_expr = ToChar(
+					opp.expected_closing,
+					"'FMMonth'"
+				)
+
+				self.group_by_period = month_expr
+				self.duration = month_expr.as_("month")
+			else:
+				self.group_by_period = Month(opp.expected_closing)
+				self.duration = MonthName(opp.expected_closing).as_("month")
+
 		else:
-			self.group_by_period = Quarter(opp.expected_closing)
-			self.duration = Quarter(opp.expected_closing).as_("quarter")
+
+			if frappe.db.db_type == "postgres":
+				DatePart = CustomFunction("DATE_PART", ["part", "date"])
+
+				self.group_by_period = DatePart("'quarter'", opp.expected_closing)
+				self.duration = DatePart(
+					"'quarter'",
+					opp.expected_closing
+				).as_("quarter")
+			else:
+				self.group_by_period = Quarter(opp.expected_closing)
+				self.duration = Quarter(opp.expected_closing).as_("quarter")
 
 		self.pipeline_by = {"Owner": "opportunity_owner", "Sales Stage": "sales_stage"}[
 			self.filters.get("pipeline_by")
 		]
 
-		self.period_by = {"Monthly": "month", "Quarterly": "quarter"}[self.filters.get("range")]
+		self.period_by = {"Monthly": "month", "Quarterly": "quarter"}[
+			self.filters.get("range")
+		]
 
 	def get_data(self):
 		self.get_fields()
 
 		opp = frappe.qb.DocType("Opportunity")
-		query = frappe.qb.get_query(
-			"Opportunity",
-			filters=self.get_conditions(),
-			ignore_permissions=True,
-		)
+
+		query = frappe.qb.from_(opp)
+
+		conditions = self.get_conditions()
+
+		for condition in conditions:
+			if isinstance(condition, dict):
+				for field, value in condition.items():
+					query = query.where(getattr(opp, field) == value)
+
+			elif isinstance(condition, list):
+				fieldname, operator, values = condition
+
+				if operator == "between":
+					query = query.where(
+						getattr(opp, fieldname).between(values[0], values[1])
+					)
 
 		pipeline_field = opp._assign if self.group_by_based_on == "_assign" else opp.sales_stage
 
