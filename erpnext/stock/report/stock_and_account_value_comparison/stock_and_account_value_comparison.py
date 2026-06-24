@@ -93,7 +93,8 @@ def get_stock_ledger_data(report_filters, filters):
 			"posting_date",
 			"posting_time",
 		],
-		group_by="voucher_type, voucher_no",
+		# group_by="voucher_type, voucher_no",
+		group_by="name, voucher_type, voucher_no, posting_date, posting_time",
 		order_by="posting_date ASC, posting_time ASC",
 	)
 
@@ -112,13 +113,27 @@ def get_gl_data(report_filters, filters):
 	gl_entries = frappe.get_all(
 		"GL Entry",
 		filters=filters,
+		# fields=[
+		# 	"name",
+		# 	"voucher_type",
+		# 	"voucher_no",
+		# 	"posting_date",
+		# 	{
+		# 		"SUB": [{"SUM": "debit_in_account_currency"}, {"SUM": "credit_in_account_currency"}],
+		# 		"as": "account_value",
+		# 	},
+		# ],
+		# group_by="voucher_type, voucher_no",
 		fields=[
-			"name",
+			{"MAX": "name", "as": "name"},
 			"voucher_type",
 			"voucher_no",
-			"posting_date",
+			{"MAX": "posting_date", "as": "posting_date"},
 			{
-				"SUB": [{"SUM": "debit_in_account_currency"}, {"SUM": "credit_in_account_currency"}],
+				"SUB": [
+					{"SUM": "debit_in_account_currency"},
+					{"SUM": "credit_in_account_currency"},
+				],
 				"as": "account_value",
 			},
 		],

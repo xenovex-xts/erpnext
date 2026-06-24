@@ -16,6 +16,15 @@ from erpnext.stock.utils import is_reposting_item_valuation_in_progress
 
 def execute(filters=None):
 	is_reposting_item_valuation_in_progress()
+
+	filters = frappe._dict(filters or {})
+
+	if not filters.get("from_date"):
+		filters.from_date = "2000-01-01"
+
+	if not filters.get("valuation_field_type"):
+		filters.valuation_field_type = "Currency"
+
 	columns = get_columns(filters)
 	items = get_items(filters)
 	sl_entries = get_stock_ledger_entries(filters, items)
@@ -41,7 +50,7 @@ def process_stock_ledger_entries(sl_entries, item_details, opening_row, precisio
 		available_serial_nos = get_serial_nos_from_sle_list(sabb_list)
 
 	if not available_serial_nos:
-		return [], []
+		return []
 
 	for sle in sl_entries:
 		update_stock_ledger_entry(sle, item_details, precision)

@@ -53,10 +53,16 @@ def get_data(conditions, filters):
 
 def get_conditions(filters):
 	conditions = "`tabTimesheet`.docstatus = 1"
+	# if filters.get("from_date"):
+	# 	conditions += " and `tabTimesheet Detail`.from_time >= timestamp(%(from_date)s, %(from_time)s)"
+	# if filters.get("to_date"):
+	# 	conditions += " and `tabTimesheet Detail`.to_time <= timestamp(%(to_date)s, %(to_time)s)"
+
 	if filters.get("from_date"):
-		conditions += " and `tabTimesheet Detail`.from_time >= timestamp(%(from_date)s, %(from_time)s)"
+		conditions += """ and "tabTimesheet Detail".from_time >= (%(from_date)s || ' ' || %(from_time)s)::timestamp """
+
 	if filters.get("to_date"):
-		conditions += " and `tabTimesheet Detail`.to_time <= timestamp(%(to_date)s, %(to_time)s)"
+		conditions += """ and "tabTimesheet Detail".to_time <= (%(to_date)s || ' ' || %(to_time)s)::timestamp """
 
 	match_conditions = build_match_conditions("Timesheet")
 	if match_conditions:

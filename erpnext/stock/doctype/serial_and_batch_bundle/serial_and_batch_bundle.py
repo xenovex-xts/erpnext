@@ -3062,6 +3062,7 @@ def get_available_batches(kwargs):
 			batch_ledger.batch_no,
 			batch_ledger.warehouse,
 			batch_table.expiry_date,
+			batch_table.creation,
 		)
 	)
 
@@ -3392,7 +3393,7 @@ def get_stock_ledgers_batches(kwargs):
 			batch_table.expiry_date,
 		)
 		.where((stock_ledger_entry.is_cancelled == 0) & (stock_ledger_entry.batch_no.isnotnull()))
-		.groupby(stock_ledger_entry.batch_no, stock_ledger_entry.warehouse)
+		.groupby(stock_ledger_entry.batch_no, stock_ledger_entry.warehouse, stock_ledger_entry.item_code, batch_table.expiry_date,batch_table.creation,)
 	)
 
 	if kwargs.get("company"):

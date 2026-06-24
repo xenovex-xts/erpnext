@@ -16,6 +16,8 @@ from erpnext import get_default_company
 from erpnext.controllers.queries import get_filters_cond
 from erpnext.controllers.website_list_for_contact import get_customers_suppliers
 from erpnext.setup.doctype.holiday_list.holiday_list import is_holiday
+from frappe.utils import add_years, nowdate
+from frappe.query_builder.functions import Count
 
 
 class Project(Document):
@@ -378,20 +380,45 @@ class Project(Document):
 					user.welcome_email_sent = 1
 
 
+# def get_timeline_data(doctype: str, name: str) -> dict[int, int]:
+# 	"""Return timeline for attendance"""
+
+# 	timesheet_detail = frappe.qb.DocType("Timesheet Detail")
+
+# 	return dict(
+# 		frappe.qb.from_(timesheet_detail)
+# 		.select(UnixTimestamp(timesheet_detail.from_time), Count("*"))
+# 		.where(timesheet_detail.project == name)
+# 		.where(timesheet_detail.from_time > CurDate() - Interval(years=1))
+# 		.where(timesheet_detail.docstatus < 2)
+# 		.groupby(Date(timesheet_detail.from_time))
+# 		.run()
+# 	)
+
 def get_timeline_data(doctype: str, name: str) -> dict[int, int]:
-	"""Return timeline for attendance"""
+        """Return timeline for attendance"""
 
-	timesheet_detail = frappe.qb.DocType("Timesheet Detail")
+        timesheet_detail = frappe.qb.DocType("Timesheet Detail")
 
-	return dict(
-		frappe.qb.from_(timesheet_detail)
-		.select(UnixTimestamp(timesheet_detail.from_time), Count("*"))
-		.where(timesheet_detail.project == name)
-		.where(timesheet_detail.from_time > CurDate() - Interval(years=1))
-		.where(timesheet_detail.docstatus < 2)
-		.groupby(Date(timesheet_detail.from_time))
-		.run()
-	)
+        one_year_ago = add_years(nowdate(), -1)
+
+        data = (
+                frappe.qb.from_(timesheet_detail)
+                .select(
+                        Date(timesheet_detail.from_time),
+                        Count("*"),
+                )
+                .where(timesheet_detail.project == name)
+                .where(timesheet_detail.from_time >= one_year_ago)
+                .where(timesheet_detail.docstatus < 2)
+                .groupby(Date(timesheet_detail.from_time))
+                .run()
+        )
+
+        return {
+                int(frappe.utils.get_datetime(row[0]).timestamp()): row[1]
+                for row in data
+        }
 
 
 def get_project_list(doctype, txt, filters, limit_start, limit_page_length=20, order_by="creation"):

@@ -49,6 +49,28 @@ def get_columns():
 
 
 def get_data():
+	# sales_order_entry = frappe.db.sql(
+	# 	"""
+	# 	SELECT
+	# 		so_item.item_code,
+	# 		so_item.item_name,
+	# 		so_item.description,
+	# 		so.name,
+	# 		so.transaction_date,
+	# 		so.customer,
+	# 		so.territory,
+	# 		sum(so_item.qty) as total_qty,
+	# 		so.company
+	# 	FROM `tabSales Order` so, `tabSales Order Item` so_item
+	# 	WHERE
+	# 		so.docstatus = 1
+	# 		and so.name = so_item.parent
+	# 		and so.status not in  ('Closed','Completed','Cancelled')
+	# 	GROUP BY
+	# 		so.name,so_item.item_code
+	# 	""",
+	# 	as_dict=1,
+	# )
 	sales_order_entry = frappe.db.sql(
 		"""
 		SELECT
@@ -67,7 +89,14 @@ def get_data():
 			and so.name = so_item.parent
 			and so.status not in  ('Closed','Completed','Cancelled')
 		GROUP BY
-			so.name,so_item.item_code
+			so.name,
+			so_item.item_code,
+			so_item.item_name,
+			so_item.description,
+			so.transaction_date,
+			so.customer,
+			so.territory,
+			so.company
 		""",
 		as_dict=1,
 	)

@@ -37,6 +37,7 @@ def get_columns(filters, trans):
 		"period_wise_select": period_select,
 		"columns": columns,
 		"group_by": based_on_details["based_on_group_by"],
+		"group_by_first_col": based_on_details["based_on_group_by_first_col"],
 		"grbc": group_by_cols,
 		"trans": trans,
 		"addl_tables": based_on_details["addl_tables"],
@@ -99,6 +100,7 @@ def get_data(filters, conditions):
 	year_start_date, year_end_date = frappe.get_cached_value(
 		"Fiscal Year", filters.get("fiscal_year"), ["year_start_date", "year_end_date"]
 	)
+	group_by_first_col = conditions["group_by_first_col"]
 
 	if filters.get("group_by"):
 		sel_col = ""
@@ -119,51 +121,42 @@ def get_data(filters, conditions):
 			inc = 1
 
 		data1 = frappe.db.sql(
-			""" select {} from `tab{}` t1, `tab{} Item` t2 {}
-					where t2.parent = t1.name and t1.company = {} and {} between {} and {} and
-					t1.docstatus = 1 {} {}
-					group by {}
+			""" select {query_details} from "tab{trans}" t1, "tab{trans} Item" t2 {addl_tables}
+					where t2.parent = t1.name and t1.company = %s and {posting_date} between %s and %s and
+					t1.docstatus = 1 {addl_cond} {cond}
+					group by {group_by}
 				""".format(
-				query_details,
-				conditions["trans"],
-				conditions["trans"],
-				conditions["addl_tables"],
-				"%s",
-				posting_date,
-				"%s",
-				"%s",
-				conditions.get("addl_tables_relational_cond"),
-				cond,
-				conditions["group_by"],
+				query_details=query_details,
+				trans=conditions["trans"],
+				addl_tables=conditions["addl_tables"],
+				posting_date=posting_date,
+				addl_cond=conditions.get("addl_tables_relational_cond"),
+				cond=cond,
+				group_by=conditions["group_by"],
 			),
 			(filters.get("company"), year_start_date, year_end_date),
 			as_list=1,
 		)
 
 		for d in range(len(data1)):
-			# to add blanck column
+			# to add blank column
 			dt = data1[d]
 			dt.insert(ind, "")
 			data.append(dt)
 
 			# to get distinct value of col specified by group_by in filter
 			row = frappe.db.sql(
-				"""select DISTINCT({}) from `tab{}` t1, `tab{} Item` t2 {}
-						where t2.parent = t1.name and t1.company = {} and {} between {} and {}
-						and t1.docstatus = 1 and {} = {} {} {}
+				"""select DISTINCT({sel_col}) from "tab{trans}" t1, "tab{trans} Item" t2 {addl_tables}
+						where t2.parent = t1.name and t1.company = %s and {posting_date} between %s and %s
+						and t1.docstatus = 1 and {group_by_first_col} = %s {addl_cond} {cond}
 					""".format(
-					sel_col,
-					conditions["trans"],
-					conditions["trans"],
-					conditions["addl_tables"],
-					"%s",
-					posting_date,
-					"%s",
-					"%s",
-					conditions["group_by"],
-					"%s",
-					conditions.get("addl_tables_relational_cond"),
-					cond,
+					sel_col=sel_col,
+					trans=conditions["trans"],
+					addl_tables=conditions["addl_tables"],
+					posting_date=posting_date,
+					group_by_first_col=group_by_first_col,
+					addl_cond=conditions.get("addl_tables_relational_cond"),
+					cond=cond,
 				),
 				(filters.get("company"), year_start_date, year_end_date, data1[d][0]),
 				as_list=1,
@@ -174,25 +167,20 @@ def get_data(filters, conditions):
 
 				# get data for group_by filter
 				row1 = frappe.db.sql(
-					""" select t4.default_currency AS currency , {} , {} from `tab{}` t1, `tab{} Item` t2 {}
-							where t2.parent = t1.name and t1.company = {} and {} between {} and {}
-							and t1.docstatus = 1 and {} = {} and {} = {} {} {}
+					""" select t4.default_currency AS currency, {sel_col}, {period_wise_select}
+							from "tab{trans}" t1, "tab{trans} Item" t2 {addl_tables}
+							where t2.parent = t1.name and t1.company = %s and {posting_date} between %s and %s
+							and t1.docstatus = 1 and {sel_col} = %s and {group_by_first_col} = %s {addl_cond} {cond}
+							group by t4.default_currency, {sel_col}
 						""".format(
-						sel_col,
-						conditions["period_wise_select"],
-						conditions["trans"],
-						conditions["trans"],
-						conditions["addl_tables"],
-						"%s",
-						posting_date,
-						"%s",
-						"%s",
-						sel_col,
-						"%s",
-						conditions["group_by"],
-						"%s",
-						conditions.get("addl_tables_relational_cond"),
-						cond,
+						sel_col=sel_col,
+						period_wise_select=conditions["period_wise_select"],
+						trans=conditions["trans"],
+						addl_tables=conditions["addl_tables"],
+						posting_date=posting_date,
+						group_by_first_col=group_by_first_col,
+						addl_cond=conditions.get("addl_tables_relational_cond"),
+						cond=cond,
 					),
 					(filters.get("company"), year_start_date, year_end_date, row[i][0], data1[d][0]),
 					as_list=1,
@@ -210,22 +198,18 @@ def get_data(filters, conditions):
 		data.append(total_row)
 	else:
 		data = frappe.db.sql(
-			""" select {} from `tab{}` t1, `tab{} Item` t2 {}
-					where t2.parent = t1.name and t1.company = {} and {} between {} and {} and
-					t1.docstatus = 1 {} {}
-					group by {}
+			""" select {query_details} from "tab{trans}" t1, "tab{trans} Item" t2 {addl_tables}
+					where t2.parent = t1.name and t1.company = %s and {posting_date} between %s and %s and
+					t1.docstatus = 1 {cond} {addl_cond}
+					group by {group_by}
 				""".format(
-				query_details,
-				conditions["trans"],
-				conditions["trans"],
-				conditions["addl_tables"],
-				"%s",
-				posting_date,
-				"%s",
-				"%s",
-				cond,
-				conditions.get("addl_tables_relational_cond", ""),
-				conditions["group_by"],
+				query_details=query_details,
+				trans=conditions["trans"],
+				addl_tables=conditions["addl_tables"],
+				posting_date=posting_date,
+				cond=cond,
+				addl_cond=conditions.get("addl_tables_relational_cond", ""),
+				group_by=conditions["group_by"],
 			),
 			(filters.get("company"), year_start_date, year_end_date),
 			as_list=1,
@@ -307,14 +291,10 @@ def get_period_wise_columns(bet_dates, period, pwc):
 
 
 def get_period_wise_query(bet_dates, trans_date, query_details):
-	# query_details += """SUM(IF(t1.{trans_date} BETWEEN '{sd}' AND '{ed}', t2.stock_qty, NULL)),
-	# 				SUM(IF(t1.{trans_date} BETWEEN '{sd}' AND '{ed}', t2.base_net_amount, NULL)),
-	# 			""".format(
-	# 	trans_date=trans_date,
-	# 	sd=bet_dates[0],
-	# 	ed=bet_dates[1],
-	# )
-	query_details += "SUM(CASE WHEN t1.{trans_date} BETWEEN '{sd}' AND '{ed}' THEN t2.stock_qty ELSE NULL END), SUM(CASE WHEN t1.{trans_date} BETWEEN '{sd}' AND '{ed}' THEN t2.base_net_amount ELSE NULL END),".format(trans_date=trans_date, sd=bet_dates[0], ed=bet_dates[1])
+	query_details += (
+		"SUM(CASE WHEN t1.{trans_date} BETWEEN '{sd}' AND '{ed}' THEN t2.stock_qty ELSE NULL END),"
+		" SUM(CASE WHEN t1.{trans_date} BETWEEN '{sd}' AND '{ed}' THEN t2.base_net_amount ELSE NULL END),"
+	).format(trans_date=trans_date, sd=bet_dates[0], ed=bet_dates[1])
 	return query_details
 
 
@@ -364,15 +344,15 @@ def based_wise_columns_query(based_on, trans):
 	if based_on == "Item":
 		based_on_details["based_on_cols"] = ["Item:Link/Item:120", "Item Name:Data:120"]
 		based_on_details["based_on_select"] = "t2.item_code, t2.item_name,"
-		# based_on_details["based_on_group_by"] = "t2.item_code"
-		based_on_details["based_on_group_by"] = """ t2.item_code, t2.item_name, t4.default_currency """
+		based_on_details["based_on_group_by"] = "t2.item_code, t2.item_name, t4.default_currency"
+		based_on_details["based_on_group_by_first_col"] = "t2.item_code"
 		based_on_details["addl_tables"] = ""
 
 	elif based_on == "Item Group":
 		based_on_details["based_on_cols"] = ["Item Group:Link/Item Group:120"]
 		based_on_details["based_on_select"] = "t2.item_group,"
-		# based_on_details["based_on_group_by"] = "t2.item_group"
-		based_on_details["based_on_group_by"] = """ t2.item_group, t4.default_currency """
+		based_on_details["based_on_group_by"] = "t2.item_group, t4.default_currency"
+		based_on_details["based_on_group_by_first_col"] = "t2.item_group"
 		based_on_details["addl_tables"] = ""
 
 	elif based_on == "Customer":
@@ -383,6 +363,8 @@ def based_wise_columns_query(based_on, trans):
 				"Territory:Link/Territory:120",
 			]
 			based_on_details["based_on_select"] = "t1.party_name, t1.customer_name, t1.territory,"
+			based_on_details["based_on_group_by"] = "t1.party_name, t1.customer_name, t1.territory, t4.default_currency"
+			based_on_details["based_on_group_by_first_col"] = "t1.party_name"
 		else:
 			based_on_details["based_on_cols"] = [
 				"Customer:Link/Customer:120",
@@ -390,15 +372,15 @@ def based_wise_columns_query(based_on, trans):
 				"Territory:Link/Territory:120",
 			]
 			based_on_details["based_on_select"] = "t1.customer, t1.customer_name, t1.territory,"
-		# based_on_details["based_on_group_by"] = "t1.party_name" if trans == "Quotation" else "t1.customer"
-		based_on_details["based_on_group_by"] = """ t1.party_name, t1.customer_name, t1.territory, t4.default_currency """
+			based_on_details["based_on_group_by"] = "t1.customer, t1.customer_name, t1.territory, t4.default_currency"
+			based_on_details["based_on_group_by_first_col"] = "t1.customer"
 		based_on_details["addl_tables"] = ""
 
 	elif based_on == "Customer Group":
 		based_on_details["based_on_cols"] = ["Customer Group:Link/Customer Group"]
 		based_on_details["based_on_select"] = "t1.customer_group,"
-		# based_on_details["based_on_group_by"] = "t1.customer_group"
-		based_on_details["based_on_group_by"] = """t1.customer,t1.customer_name,t1.territory,t4.default_currency"""
+		based_on_details["based_on_group_by"] = "t1.customer_group, t4.default_currency"
+		based_on_details["based_on_group_by_first_col"] = "t1.customer_group"
 		based_on_details["addl_tables"] = ""
 
 	elif based_on == "Supplier":
@@ -408,45 +390,45 @@ def based_wise_columns_query(based_on, trans):
 			"Supplier Group:Link/Supplier Group:140",
 		]
 		based_on_details["based_on_select"] = "t1.supplier, t1.supplier_name, t3.supplier_group,"
-		# based_on_details["based_on_group_by"] = "t1.supplier"
-		based_on_details["based_on_group_by"] = """ t1.supplier,t1.supplier_name,t3.supplier_group,t4.default_currency"""
-		based_on_details["addl_tables"] = ",`tabSupplier` t3"
+		based_on_details["based_on_group_by"] = "t1.supplier, t1.supplier_name, t3.supplier_group, t4.default_currency"
+		based_on_details["based_on_group_by_first_col"] = "t1.supplier"
+		based_on_details["addl_tables"] = ', "tabSupplier" t3'
 		based_on_details["addl_tables_relational_cond"] = " and t1.supplier = t3.name"
 
 	elif based_on == "Supplier Group":
 		based_on_details["based_on_cols"] = ["Supplier Group:Link/Supplier Group:140"]
 		based_on_details["based_on_select"] = "t3.supplier_group,"
-		# based_on_details["based_on_group_by"] = "t3.supplier_group"
-		based_on_details["based_on_group_by"] = """ t3.supplier_group, t4.default_currency """
-		based_on_details["addl_tables"] = ",`tabSupplier` t3"
+		based_on_details["based_on_group_by"] = "t3.supplier_group, t4.default_currency"
+		based_on_details["based_on_group_by_first_col"] = "t3.supplier_group"
+		based_on_details["addl_tables"] = ', "tabSupplier" t3'
 		based_on_details["addl_tables_relational_cond"] = " and t1.supplier = t3.name"
 
 	elif based_on == "Territory":
 		based_on_details["based_on_cols"] = ["Territory:Link/Territory:120"]
 		based_on_details["based_on_select"] = "t1.territory,"
-		# based_on_details["based_on_group_by"] = "t1.territory"
-		based_on_details["based_on_group_by"] = """t1.territory,t4.default_currency"""
+		based_on_details["based_on_group_by"] = "t1.territory, t4.default_currency"
+		based_on_details["based_on_group_by_first_col"] = "t1.territory"
 		based_on_details["addl_tables"] = ""
 
 	elif based_on == "Project":
 		if trans in ["Sales Invoice", "Delivery Note", "Sales Order"]:
 			based_on_details["based_on_cols"] = ["Project:Link/Project:120"]
 			based_on_details["based_on_select"] = "t1.project,"
-			# based_on_details["based_on_group_by"] = "t1.project"
-			based_on_details["based_on_group_by"] = """t1.project,t4.default_currency"""
+			based_on_details["based_on_group_by"] = "t1.project, t4.default_currency"
+			based_on_details["based_on_group_by_first_col"] = "t1.project"
 			based_on_details["addl_tables"] = ""
 		elif trans in ["Purchase Order", "Purchase Invoice", "Purchase Receipt"]:
 			based_on_details["based_on_cols"] = ["Project:Link/Project:120"]
 			based_on_details["based_on_select"] = "t2.project,"
-			# based_on_details["based_on_group_by"] = "t2.project"
-			based_on_details["based_on_group_by"] = """t2.project, t4.default_currency """
+			based_on_details["based_on_group_by"] = "t2.project, t4.default_currency"
+			based_on_details["based_on_group_by_first_col"] = "t2.project"
 			based_on_details["addl_tables"] = ""
 		else:
 			frappe.throw(_("Project-wise data is not available for Quotation"))
 
 	based_on_details["based_on_select"] += "t4.default_currency as currency,"
 	based_on_details["based_on_cols"].append("Currency:Link/Currency:120")
-	based_on_details["addl_tables"] += ", `tabCompany` t4"
+	based_on_details["addl_tables"] += ', "tabCompany" t4'
 	based_on_details["addl_tables_relational_cond"] = (
 		based_on_details.get("addl_tables_relational_cond", "") + " and t1.company = t4.name"
 	)
