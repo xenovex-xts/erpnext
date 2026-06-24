@@ -319,7 +319,17 @@ def get_producible_fg_items(filters):
 			Floor(bin_subquery.actual_qty / ((Sum(BOM_ITEM.stock_qty)) / BOM.quantity)),
 		)
 		.where((BOM_ITEM.parent == filters.get("bom")) & (BOM_ITEM.parenttype == "BOM"))
-		.groupby(BOM_ITEM.item_code)
+		# .groupby(BOM_ITEM.item_code)
+		# .orderby(BOM_ITEM.idx)
+		.groupby(
+			BOM_ITEM.item_code,
+			BOM_ITEM.description,
+			BOM_ITEM.parent,
+			BOM_ITEM.stock_qty,
+			BOM.quantity,
+			bin_subquery.actual_qty,
+			BOM_ITEM.idx,
+		)
 		.orderby(BOM_ITEM.idx)
 	)
 

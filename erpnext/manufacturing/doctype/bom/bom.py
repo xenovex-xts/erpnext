@@ -1331,12 +1331,21 @@ def get_valuation_rate(data):
 		frappe.qb.from_(bin_table)
 		.join(wh_table)
 		.on(bin_table.warehouse == wh_table.name)
+		# .select(
+		# 	Case()
+		# 	.when(
+		# 		Count(bin_table.name) > 0, IfNull(Sum(bin_table.stock_value) / Sum(bin_table.actual_qty), 0.0)
+		# 	)
+		# 	.else_(None)
+		# 	.as_("valuation_rate")
+		# )
 		.select(
 			Case()
 			.when(
-				Count(bin_table.name) > 0, IfNull(Sum(bin_table.stock_value) / Sum(bin_table.actual_qty), 0.0)
+				(Count(bin_table.name) > 0) & (Sum(bin_table.actual_qty) != 0),
+				Sum(bin_table.stock_value) / Sum(bin_table.actual_qty),
 			)
-			.else_(None)
+			.else_(0.0)
 			.as_("valuation_rate")
 		)
 		.where((bin_table.item_code == item_code) & (wh_table.company == company))
@@ -1385,72 +1394,173 @@ def get_bom_items_as_dict(
 ):
 	item_dict = {}
 
-	group_by_cond = "group by item_code, stock_uom, operation"
-	if frappe.get_cached_value("BOM", bom, "track_semi_finished_goods"):
-		fetch_exploded = 0
-		group_by_cond = "group by item_code, operation_row_id, stock_uom"
+	# group_by_cond for fetch_exploded path (tabBOM Explosion Item)
+	# Only columns that exist in tabBOM Explosion Item
+	exploded_group_by_cond = """
+	group by
+			bom_item.item_code,
+			item.item_name,
+			item.image,
+			bom.project,
+			item.stock_uom,
+			item.item_group,
+			item.allow_alternative_item,
+			item_default.default_warehouse,
+			item_default.expense_account,
+			item_default.buying_cost_center,
+			bom_item.operation,
+			bom_item.rate,
+			bom_item.source_warehouse,
+			bom_item.include_item_in_manufacturing,
+			bom_item.sourced_by_supplier,
+			bom_item.description
+	"""
 
-	if fetch_secondary_items:
-		fetch_exploded = 0
-		group_by_cond = "group by item_code"
+	# group_by_cond for BOM Item path (tabBOM Item)
+	# Includes uom, conversion_factor, base_rate, operation_row_id, is_phantom_item, bom_no
+	bom_item_group_by_cond = """
+	group by
+			bom_item.item_code,
+			item.item_name,
+			item.image,
+			bom.project,
+			item.stock_uom,
+			item.item_group,
+			item.allow_alternative_item,
+			item_default.default_warehouse,
+			item_default.expense_account,
+			item_default.buying_cost_center,
+			bom_item.operation,
+			bom_item.rate,
+			bom_item.uom,
+			bom_item.conversion_factor,
+			bom_item.source_warehouse,
+			bom_item.include_item_in_manufacturing,
+			bom_item.sourced_by_supplier,
+			bom_item.description,
+			bom_item.base_rate,
+			bom_item.operation_row_id,
+			bom_item.is_phantom_item,
+			bom_item.bom_no
+	"""
 
-	# Did not use qty_consumed_per_unit in the query, as it leads to rounding loss
+	# group_by_cond for track_semi_finished_goods path
+	semi_finished_group_by_cond = """
+	group by
+			bom_item.item_code,
+			item.item_name,
+			item.image,
+			bom.project,
+			item.stock_uom,
+			item.item_group,
+			item.allow_alternative_item,
+			item_default.default_warehouse,
+			item_default.expense_account,
+			item_default.buying_cost_center,
+			bom_item.operation_row_id,
+			bom_item.stock_uom,
+			bom_item.source_warehouse,
+			bom_item.operation,
+			bom_item.include_item_in_manufacturing,
+			bom_item.description,
+			bom_item.rate,
+			bom_item.sourced_by_supplier
+	"""
+
+	# group_by_cond for fetch_secondary_items path (tabBOM Secondary Item)
+	secondary_group_by_cond = """
+	group by
+			bom_item.item_code,
+			item.item_name,
+			item.image,
+			bom.project,
+			item.stock_uom,
+			item.item_group,
+			item.allow_alternative_item,
+			item_default.default_warehouse,
+			item_default.expense_account,
+			item_default.buying_cost_center,
+			item.description,
+			bom_item.cost_allocation_per,
+			bom_item.process_loss_per,
+			bom_item.type,
+			bom_item.name,
+			bom_item.is_legacy
+	"""
+
 	query = """select
-				bom_item.item_code,
-				bom_item.idx,
-				item.item_name,
-				sum(bom_item.{qty_field}/ifnull(bom.quantity, 1)) * %(qty)s as qty,
-				item.image,
-				bom.project,
-				item.stock_uom,
-				item.item_group,
-				item.allow_alternative_item,
-				item_default.default_warehouse,
-				item_default.expense_account as expense_account,
-				item_default.buying_cost_center as cost_center
-				{select_columns}
-			from
-				`tab{table}` bom_item
-				JOIN `tabBOM` bom ON bom_item.parent = bom.name
-				JOIN `tabItem` item ON item.name = bom_item.item_code
-				LEFT JOIN `tabItem Default` item_default
-					ON item_default.parent = item.name and item_default.company = %(company)s
-			where
-				bom_item.docstatus < 2
-				and bom.name = %(bom)s
-				and (item.is_stock_item in (1, {is_stock_item})
-				{where_conditions}
-				{group_by_cond}
-				order by idx"""
+			bom_item.item_code,
+			item.item_name,
+			sum(bom_item.{qty_field}/coalesce(bom.quantity, 1)) * %(qty)s as qty,
+			item.image,
+			bom.project,
+			item.stock_uom,
+			item.item_group,
+			item.allow_alternative_item,
+			item_default.default_warehouse,
+			item_default.expense_account as expense_account,
+			item_default.buying_cost_center as cost_center
+			{select_columns}
+		from
+			"tab{table}" bom_item
+			JOIN "tabBOM" bom ON bom_item.parent = bom.name
+			JOIN "tabItem" item ON item.name = bom_item.item_code
+			LEFT JOIN "tabItem Default" item_default
+				ON item_default.parent = item.name and item_default.company = %(company)s
+		where
+			bom_item.docstatus < 2
+			and bom.name = %(bom)s
+			and (item.is_stock_item in (1, {is_stock_item})
+			{where_conditions}
+			{group_by_cond}
+			order by bom_item.item_code
+	"""
 
 	is_stock_item = cint(not include_non_stock_items)
-	if cint(fetch_exploded):
+
+	if frappe.get_cached_value("BOM", bom, "track_semi_finished_goods"):
+		fetch_exploded = 0
 		query = query.format(
-			table="BOM Explosion Item",
-			where_conditions=")",
+			table="BOM Item",
+			where_conditions="or bom_item.is_phantom_item)",
 			is_stock_item=is_stock_item,
-			qty_field="stock_qty",
-			group_by_cond=group_by_cond,
+			qty_field="stock_qty" if fetch_qty_in_stock_uom else "qty",
 			select_columns=""", bom_item.source_warehouse, bom_item.operation,
 				bom_item.include_item_in_manufacturing, bom_item.description, bom_item.rate, bom_item.sourced_by_supplier,
-				sum(bom_item.stock_qty/ifnull(bom.quantity, 1)) * bom_item.rate * %(qty)s as amount,
-				(Select idx from `tabBOM Item` where item_code = bom_item.item_code and parent = %(parent)s limit 1) as idx""",
+				sum(bom_item.stock_qty/coalesce(bom.quantity, 1)) * bom_item.rate * %(qty)s as amount,
+				bom_item.operation_row_id, bom_item.stock_uom """,
+			group_by_cond=semi_finished_group_by_cond,
 		)
+		items = frappe.db.sql(query, {"qty": qty, "bom": bom, "company": company}, as_dict=True)
 
-		items = frappe.db.sql(
-			query, {"parent": bom, "qty": qty, "bom": bom, "company": company}, as_dict=True
-		)
 	elif fetch_secondary_items:
+		fetch_exploded = 0
 		query = query.format(
 			table="BOM Secondary Item",
 			where_conditions=")",
 			select_columns=", item.description, bom_item.cost_allocation_per, bom_item.process_loss_per, bom_item.type, bom_item.name, bom_item.is_legacy",
 			is_stock_item=is_stock_item,
 			qty_field="stock_qty",
-			group_by_cond=group_by_cond,
+			group_by_cond=secondary_group_by_cond,
+		)
+		items = frappe.db.sql(query, {"qty": qty, "bom": bom, "company": company}, as_dict=True)
+
+	elif cint(fetch_exploded):
+		query = query.format(
+			table="BOM Explosion Item",
+			where_conditions=")",
+			is_stock_item=is_stock_item,
+			qty_field="stock_qty",
+			select_columns=""", bom_item.source_warehouse, bom_item.operation,
+				bom_item.include_item_in_manufacturing, bom_item.description, bom_item.rate, bom_item.sourced_by_supplier,
+				sum(bom_item.stock_qty/coalesce(bom.quantity, 1)) * bom_item.rate * %(qty)s as amount,
+				(Select idx from "tabBOM Item" where item_code = bom_item.item_code and parent = %(parent)s limit 1) as idx""",
+			group_by_cond=exploded_group_by_cond,
+		)
+		items = frappe.db.sql(
+			query, {"parent": bom, "qty": qty, "bom": bom, "company": company}, as_dict=True
 		)
 
-		items = frappe.db.sql(query, {"qty": qty, "bom": bom, "company": company}, as_dict=True)
 	else:
 		query = query.format(
 			table="BOM Item",
@@ -1459,18 +1569,18 @@ def get_bom_items_as_dict(
 			qty_field="stock_qty" if fetch_qty_in_stock_uom else "qty",
 			select_columns=""", bom_item.rate, bom_item.uom, bom_item.conversion_factor, bom_item.source_warehouse,
 				bom_item.operation, bom_item.include_item_in_manufacturing, bom_item.sourced_by_supplier,
-				sum(bom_item.stock_qty/ifnull(bom.quantity, 1)) * bom_item.rate * %(qty)s as amount,
-				bom_item.description, bom_item.base_rate as rate, bom_item.operation_row_id, bom_item.is_phantom_item , bom_item.bom_no """,
-			group_by_cond=group_by_cond,
+				sum(bom_item.stock_qty/coalesce(bom.quantity, 1)) * bom_item.rate * %(qty)s as amount,
+				bom_item.description, bom_item.base_rate, bom_item.operation_row_id, bom_item.is_phantom_item, bom_item.bom_no """,
+			group_by_cond=bom_item_group_by_cond,
 		)
 		items = frappe.db.sql(query, {"qty": qty, "bom": bom, "company": company}, as_dict=True)
 
 	for item in items:
 		key = item.item_code
-		if item.operation_row_id:
+		if item.get("operation_row_id"):
 			key = (item.item_code, item.operation_row_id)
 
-		if item.operation:
+		if item.get("operation"):
 			key = (item.item_code, item.operation)
 
 		if item.get("is_phantom_item"):

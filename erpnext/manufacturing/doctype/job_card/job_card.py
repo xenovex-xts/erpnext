@@ -241,15 +241,30 @@ class JobCard(Document):
 
 		wo_qty = wo_qty + (wo_qty * over_production_percentage / 100)
 
-		job_card_qty = frappe.get_all(
-			"Job Card",
-			fields=[{"SUM": "for_quantity"}],
-			filters={
+		# job_card_qty = frappe.get_all(
+		# 	"Job Card",
+		# 	fields=[{"SUM": "for_quantity"}],
+		# 	filters={
+		# 		"work_order": self.work_order,
+		# 		"operation_id": self.operation_id,
+		# 		"docstatus": ["!=", 2],
+		# 	},
+		# 	as_list=1,
+		# )
+
+		# job_card_qty = flt(job_card_qty[0][0]) if job_card_qty else 0
+		job_card_qty = frappe.db.sql(
+			"""
+			SELECT COALESCE(SUM(for_quantity), 0)
+			FROM "tabJob Card"
+			WHERE work_order = %(work_order)s
+				AND operation_id = %(operation_id)s
+				AND docstatus != 2
+			""",
+			{
 				"work_order": self.work_order,
 				"operation_id": self.operation_id,
-				"docstatus": ["!=", 2],
 			},
-			as_list=1,
 		)
 
 		job_card_qty = flt(job_card_qty[0][0]) if job_card_qty else 0
@@ -1064,22 +1079,45 @@ class JobCard(Document):
 
 		wo.save()
 
+	# def get_current_operation_data(self):
+	# 	return frappe.get_all(
+	# 		"Job Card",
+	# 		fields=[
+	# 			{"SUM": "total_time_in_mins", "as": "time_in_mins"},
+	# 			{"SUM": "total_completed_qty", "as": "completed_qty"},
+	# 			{"SUM": "process_loss_qty", "as": "process_loss_qty"},
+	# 			{"SUM": "pending_qty", "as": "pending_qty"},
+	# 		],
+	# 		filters={
+	# 			"docstatus": 1,
+	# 			"work_order": self.work_order,
+	# 			"operation_id": self.operation_id,
+	# 			"is_corrective_job_card": 0,
+	# 		},
+	# 	)
+	from frappe.query_builder.functions import Sum
+
+
 	def get_current_operation_data(self):
-		return frappe.get_all(
-			"Job Card",
-			fields=[
-				{"SUM": "total_time_in_mins", "as": "time_in_mins"},
-				{"SUM": "total_completed_qty", "as": "completed_qty"},
-				{"SUM": "process_loss_qty", "as": "process_loss_qty"},
-				{"SUM": "pending_qty", "as": "pending_qty"},
-			],
-			filters={
-				"docstatus": 1,
-				"work_order": self.work_order,
-				"operation_id": self.operation_id,
-				"is_corrective_job_card": 0,
-			},
-		)
+		jc = frappe.qb.DocType("Job Card")
+
+		result = (
+			frappe.qb.from_(jc)
+			.select(
+				Sum(jc.total_time_in_mins).as_("time_in_mins"),
+				Sum(jc.total_completed_qty).as_("completed_qty"),
+				Sum(jc.process_loss_qty).as_("process_loss_qty"),
+				Sum(jc.pending_qty).as_("pending_qty"),
+			)
+			.where(
+				(jc.docstatus == 1)
+				& (jc.work_order == self.work_order)
+				& (jc.operation_id == self.operation_id)
+				& (jc.is_corrective_job_card == 0)
+			)
+		).run(as_dict=True)
+
+		return result
 
 	def set_consumed_qty_in_job_card_item(self, ste_doc):
 		jc_item_names = [row.job_card_item for row in ste_doc.get("items") if row.get("job_card_item")]

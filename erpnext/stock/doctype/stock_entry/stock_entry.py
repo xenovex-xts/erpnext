@@ -3054,19 +3054,40 @@ class StockEntry(StockController, SubcontractingInwardController):
 
 		precision = self.precision("process_loss_qty")
 		if self.work_order:
-			data = frappe.get_all(
-				"Work Order Operation",
-				filters={"parent": self.work_order},
-				fields=[{"MAX": "process_loss_qty", "as": "process_loss_qty"}],
+			# data = frappe.get_all(
+			# 	"Work Order Operation",
+			# 	filters={"parent": self.work_order},
+			# 	fields=[{"MAX": "process_loss_qty", "as": "process_loss_qty"}],
+			# )
+
+			# if data and data[0].process_loss_qty:
+			# 	process_loss_qty = data[0].process_loss_qty
+			# 	if flt(self.process_loss_qty, precision) != flt(process_loss_qty, precision):
+			# 		self.process_loss_qty = flt(process_loss_qty, precision)
+
+			# 		frappe.msgprint(
+			# 			_("The Process Loss Qty has reset as per job cards Process Loss Qty"), alert=True
+			# 		)
+
+			result = frappe.db.sql(
+				"""
+				SELECT MAX(process_loss_qty) AS process_loss_qty
+				FROM `tabWork Order Operation`
+				WHERE parent = %s
+				""",
+				(self.work_order,),
+				as_dict=True,
 			)
 
-			if data and data[0].process_loss_qty:
-				process_loss_qty = data[0].process_loss_qty
+			if result and result[0].get("process_loss_qty"):
+				process_loss_qty = result[0]["process_loss_qty"]
+
 				if flt(self.process_loss_qty, precision) != flt(process_loss_qty, precision):
 					self.process_loss_qty = flt(process_loss_qty, precision)
 
 					frappe.msgprint(
-						_("The Process Loss Qty has reset as per job cards Process Loss Qty"), alert=True
+						_("The Process Loss Qty has reset as per job cards Process Loss Qty"),
+						alert=True,
 					)
 
 		if not self.process_loss_percentage and not self.process_loss_qty:
@@ -3322,8 +3343,16 @@ class StockEntry(StockController, SubcontractingInwardController):
 				& (job_card.work_order == self.work_order)
 				& (job_card.docstatus == 1)
 			)
-			.groupby(job_card_secondary_item.item_code, job_card_secondary_item.type)
-			.orderby(job_card_secondary_item.idx)
+			# .groupby(job_card_secondary_item.item_code, job_card_secondary_item.type)
+			.groupby(
+				job_card_secondary_item.item_code,
+				job_card_secondary_item.item_name,
+				job_card_secondary_item.description,
+				job_card_secondary_item.stock_uom,
+				job_card_secondary_item.type,
+				job_card_secondary_item.bom_secondary_item,
+			)
+			.orderby(job_card_secondary_item.item_code)
 		)
 
 		if self.job_card:

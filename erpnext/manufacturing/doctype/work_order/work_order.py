@@ -832,6 +832,16 @@ class WorkOrder(Document):
 		production_plan = frappe.get_doc("Production Plan", self.production_plan)
 		produced_qty = 0
 		if self.production_plan_item:
+			# total_qty = frappe.get_all(
+			# 	"Work Order",
+			# 	fields=[{"SUM": "produced_qty", "as": "produced_qty"}],
+			# 	filters={
+			# 		"docstatus": 1,
+			# 		"production_plan": self.production_plan,
+			# 		"production_plan_item": self.production_plan_item,
+			# 	},
+			# 	as_list=1,
+			# )
 			total_qty = frappe.get_all(
 				"Work Order",
 				fields=[{"SUM": "produced_qty", "as": "produced_qty"}],
@@ -841,6 +851,7 @@ class WorkOrder(Document):
 					"production_plan_item": self.production_plan_item,
 				},
 				as_list=1,
+				order_by=None,
 			)
 
 			produced_qty = total_qty[0][0] if total_qty else 0
@@ -1463,22 +1474,52 @@ class WorkOrder(Document):
 			actual_end_dates = [d.actual_end_time for d in self.get("operations") if d.actual_end_time]
 			if actual_end_dates:
 				self.actual_end_date = max(actual_end_dates)
+		# else:
+		# 	data = frappe.get_all(
+		# 		"Stock Entry",
+		# 		fields=[{"TIMESTAMP": ["posting_date", "posting_time"], "as": "posting_datetime"}],
+		# 		filters={
+		# 			"work_order": self.name,
+		# 			"purpose": ("in", ["Material Transfer for Manufacture", "Manufacture"]),
+		# 		},
+		# 	)
+
+		# 	if data and len(data):
+		# 		dates = [d.posting_datetime for d in data]
+		# 		self.db_set("actual_start_date", min(dates))
+
+		# 		if self.status == "Completed":
+		# 			self.db_set("actual_end_date", max(dates))
+
 		else:
 			data = frappe.get_all(
 				"Stock Entry",
-				fields=[{"TIMESTAMP": ["posting_date", "posting_time"], "as": "posting_datetime"}],
+				fields=["posting_date", "posting_time"],
 				filters={
 					"work_order": self.name,
 					"purpose": ("in", ["Material Transfer for Manufacture", "Manufacture"]),
 				},
 			)
 
-			if data and len(data):
-				dates = [d.posting_datetime for d in data]
-				self.db_set("actual_start_date", min(dates))
+			if data:
+				from datetime import datetime
 
-				if self.status == "Completed":
-					self.db_set("actual_end_date", max(dates))
+				dates = []
+
+				for d in data:
+					if d.posting_date and d.posting_time:
+						dates.append(
+							datetime.combine(
+								d.posting_date,
+								d.posting_time,
+							)
+						)
+
+				if dates:
+					self.db_set("actual_start_date", min(dates))
+
+					if self.status == "Completed":
+						self.db_set("actual_end_date", max(dates))
 
 		self.set_lead_time()
 
@@ -1690,7 +1731,11 @@ class WorkOrder(Document):
 				& (ste.purpose == "Material Transfer for Manufacture")
 				& (ste.is_return == 0)
 			)
-			.groupby(ste_child.item_code)
+			# .groupby(ste_child.item_code)
+			.groupby(
+				ste_child.item_code,
+				ste_child.original_item,
+			)
 		)
 
 		data = query.run(as_dict=1) or []
@@ -1763,7 +1808,11 @@ class WorkOrder(Document):
 				& (ste.purpose == "Material Transfer for Manufacture")
 				& (ste.is_return == 1)
 			)
-			.groupby(ste_child.item_code)
+			# .groupby(ste_child.item_code)
+			.groupby(
+				ste_child.item_code,
+				ste_child.original_item,
+			)
 		)
 
 		data = query.run(as_dict=1) or []
@@ -2383,16 +2432,31 @@ def get_bom_operations(doctype, txt, searchfield, start, page_len, filters):
 
 @frappe.whitelist()
 def get_item_details(item, project=None, skip_bom_info=False, throw=True):
+	# res = frappe.db.sql(
+	# 	"""
+	# 	select stock_uom, description, item_name, allow_alternative_item,
+	# 		include_item_in_manufacturing
+	# 	from `tabItem`
+	# 	where disabled=0
+	# 		and (end_of_life is null or end_of_life='0000-00-00' or end_of_life > %s)
+	# 		and name=%s
+	# """,
+	# 	(nowdate(), item),
+	# 	as_dict=1,
+	# )
 	res = frappe.db.sql(
 		"""
 		select stock_uom, description, item_name, allow_alternative_item,
-			include_item_in_manufacturing
+				include_item_in_manufacturing
 		from `tabItem`
-		where disabled=0
-			and (end_of_life is null or end_of_life='0000-00-00' or end_of_life > %s)
-			and name=%s
-	""",
-		(nowdate(), item),
+		where disabled = 0
+				and (
+						end_of_life is null
+						or end_of_life > CURRENT_DATE
+				)
+				and name = %s
+		""",
+		(item,),
 		as_dict=1,
 	)
 
