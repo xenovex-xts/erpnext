@@ -698,6 +698,56 @@ class ReceivablePayableReport:
 			)
 		).run(as_dict=True)
 
+	# def get_future_payments_from_journal_entry(self):
+	# 	je = frappe.qb.DocType("Journal Entry")
+	# 	jea = frappe.qb.DocType("Journal Entry Account")
+	# 	query = (
+	# 		frappe.qb.from_(je)
+	# 		.inner_join(jea)
+	# 		.on(jea.parent == je.name)
+	# 		.select(
+	# 			jea.reference_name.as_("invoice_no"),
+	# 			jea.party,
+	# 			jea.party_type,
+	# 			je.posting_date.as_("future_date"),
+	# 			je.cheque_no.as_("future_ref"),
+	# 		)
+	# 		.where(
+	# 			(je.docstatus < 2)
+	# 			& (je.posting_date > self.filters.report_date)
+	# 			& (jea.party_type.isin(self.party_type))
+	# 			& (jea.reference_name.isnotnull())
+	# 			& (jea.reference_name != "")
+	# 		)
+	# 	)
+
+	# 	if self.filters.get("party"):
+	# 		if self.account_type == "Payable":
+	# 			query = query.select(
+	# 				Sum(jea.debit_in_account_currency - jea.credit_in_account_currency).as_("future_amount")
+	# 			)
+	# 			query = query.select(Sum(jea.debit - jea.credit).as_("future_amount_in_base_currency"))
+	# 		else:
+	# 			query = query.select(
+	# 				Sum(jea.credit_in_account_currency - jea.debit_in_account_currency).as_("future_amount")
+	# 			)
+	# 			query = query.select(Sum(jea.credit - jea.debit).as_("future_amount_in_base_currency"))
+	# 	else:
+	# 		query = query.select(
+	# 			Sum(jea.debit if self.account_type == "Payable" else jea.credit).as_(
+	# 				"future_amount_in_base_currency"
+	# 			)
+	# 		)
+	# 		query = query.select(
+	# 			Sum(
+	# 				jea.debit_in_account_currency
+	# 				if self.account_type == "Payable"
+	# 				else jea.credit_in_account_currency
+	# 			).as_("future_amount")
+	# 		)
+
+	# 	query = query.having(qb.Field("future_amount") > 0)
+	# 	return query.run(as_dict=True)
 	def get_future_payments_from_journal_entry(self):
 		je = frappe.qb.DocType("Journal Entry")
 		jea = frappe.qb.DocType("Journal Entry Account")
@@ -719,6 +769,13 @@ class ReceivablePayableReport:
 				& (jea.reference_name.isnotnull())
 				& (jea.reference_name != "")
 			)
+			.groupby(
+				jea.reference_name,
+				jea.party,
+				jea.party_type,
+				je.posting_date,
+				je.cheque_no,
+			)
 		)
 
 		if self.filters.get("party"):
@@ -726,17 +783,27 @@ class ReceivablePayableReport:
 				query = query.select(
 					Sum(jea.debit_in_account_currency - jea.credit_in_account_currency).as_("future_amount")
 				)
-				query = query.select(Sum(jea.debit - jea.credit).as_("future_amount_in_base_currency"))
+				query = query.select(
+					Sum(jea.debit - jea.credit).as_("future_amount_in_base_currency")
+				)
+				query = query.having(
+					Sum(jea.debit_in_account_currency - jea.credit_in_account_currency) > 0
+				)
 			else:
 				query = query.select(
 					Sum(jea.credit_in_account_currency - jea.debit_in_account_currency).as_("future_amount")
 				)
-				query = query.select(Sum(jea.credit - jea.debit).as_("future_amount_in_base_currency"))
+				query = query.select(
+					Sum(jea.credit - jea.debit).as_("future_amount_in_base_currency")
+				)
+				query = query.having(
+					Sum(jea.credit_in_account_currency - jea.debit_in_account_currency) > 0
+				)
 		else:
 			query = query.select(
-				Sum(jea.debit if self.account_type == "Payable" else jea.credit).as_(
-					"future_amount_in_base_currency"
-				)
+				Sum(
+					jea.debit if self.account_type == "Payable" else jea.credit
+				).as_("future_amount_in_base_currency")
 			)
 			query = query.select(
 				Sum(
@@ -745,8 +812,14 @@ class ReceivablePayableReport:
 					else jea.credit_in_account_currency
 				).as_("future_amount")
 			)
+			query = query.having(
+				Sum(
+					jea.debit_in_account_currency
+					if self.account_type == "Payable"
+					else jea.credit_in_account_currency
+				) > 0
+			)
 
-		query = query.having(qb.Field("future_amount") > 0)
 		return query.run(as_dict=True)
 
 	def allocate_future_payments(self, row):
