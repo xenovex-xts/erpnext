@@ -11,6 +11,7 @@ from frappe.cache_manager import clear_defaults_cache
 from frappe.contacts.address_and_contact import load_address_and_contact
 from frappe.custom.doctype.property_setter.property_setter import make_property_setter
 from frappe.desk.page.setup_wizard.setup_wizard import make_records
+from frappe.utils import add_years, cint, nowdate
 from frappe.utils import (
 	add_months,
 	cint,
@@ -960,7 +961,7 @@ def add_node():
 
 def get_all_transactions_annual_history(company):
 	out = {}
-
+	one_year_ago = add_years(nowdate(), -1)
 	items = frappe.db.sql(
 		"""
 		select transaction_date, count(*) as count
@@ -998,12 +999,16 @@ def get_all_transactions_annual_history(company):
 		where
 			company=%s
 			and
+			/*
 			transaction_date > date_sub(curdate(), interval 1 year)
+			*/
+			transaction_date > %s
 
 		group by
 			transaction_date
 			""",
-		(company),
+		# (company),
+		(company, one_year_ago),
 		as_dict=True,
 	)
 

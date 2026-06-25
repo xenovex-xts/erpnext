@@ -318,22 +318,55 @@ def apply_common_conditions(filters, query, doctype, child_doctype=None, payment
 	if filters.get("to_date"):
 		query = query.where(parent_doc.posting_date <= filters.to_date)
 
-	if payments:
-		if doctype == "Journal Entry" and filters.get("cost_center"):
-			query = query.where(child_doc.cost_center == filters.cost_center)
-		elif filters.get("cost_center"):
-			query = query.where(parent_doc.cost_center == filters.cost_center)
+	# if payments:
+	# 	if doctype == "Journal Entry" and filters.get("cost_center"):
+	# 		query = query.where(child_doc.cost_center == filters.cost_center)
+	# 	elif filters.get("cost_center"):
+	# 		query = query.where(parent_doc.cost_center == filters.cost_center)
+	if doctype == "Journal Entry" and filters.get("cost_center"):
+			if isinstance(filters.cost_center, (list, tuple)):
+					query = query.where(child_doc.cost_center.isin(filters.cost_center))
+			else:
+					query = query.where(child_doc.cost_center == filters.cost_center)
+
+	elif filters.get("cost_center"):
+			if isinstance(filters.cost_center, (list, tuple)):
+					query = query.where(parent_doc.cost_center.isin(filters.cost_center))
+			else:
+					query = query.where(parent_doc.cost_center == filters.cost_center)
+					
+	# else:
+		# if filters.get("cost_center"):
+		# 	query = query.where(child_doc.cost_center == filters.cost_center)
+		# 	join_required = True
+		# if filters.get("warehouse"):
+		# 	query = query.where(child_doc.warehouse == filters.warehouse)
+		# 	join_required = True
+		# if filters.get("item_group"):
+		# 	query = query.where(child_doc.item_group == filters.item_group)
+		# 	join_required = True
 	else:
 		if filters.get("cost_center"):
-			query = query.where(child_doc.cost_center == filters.cost_center)
-			join_required = True
-		if filters.get("warehouse"):
-			query = query.where(child_doc.warehouse == filters.warehouse)
-			join_required = True
-		if filters.get("item_group"):
-			query = query.where(child_doc.item_group == filters.item_group)
-			join_required = True
+				if isinstance(filters.cost_center, (list, tuple)):
+						query = query.where(child_doc.cost_center.isin(filters.cost_center))
+				else:
+						query = query.where(child_doc.cost_center == filters.cost_center)
+				join_required = True
 
+		if filters.get("warehouse"):
+				if isinstance(filters.warehouse, (list, tuple)):
+						query = query.where(child_doc.warehouse.isin(filters.warehouse))
+				else:
+						query = query.where(child_doc.warehouse == filters.warehouse)
+				join_required = True
+
+		if filters.get("item_group"):
+				if isinstance(filters.item_group, (list, tuple)):
+						query = query.where(child_doc.item_group.isin(filters.item_group))
+				else:
+						query = query.where(child_doc.item_group == filters.item_group)
+				join_required = True
+				
 	if not payments:
 		if filters.get("brand"):
 			query = query.where(child_doc.brand == filters.brand)
