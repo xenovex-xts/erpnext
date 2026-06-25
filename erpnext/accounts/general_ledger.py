@@ -822,7 +822,7 @@ def check_freezing_date(posting_date, company, adv_adj=False):
 				)
 
 
-<<<<<<< HEAD
+
 # def validate_against_pcv(is_opening, posting_date, company):
 # 	if is_opening and frappe.db.exists("Period Closing Voucher", {"docstatus": 1, "company": company}):
 # 		frappe.throw(
