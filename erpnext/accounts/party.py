@@ -1036,21 +1036,42 @@ def get_default_contact(doctype: str, name: str) -> str | None:
 	:param name: Party name
 	:return: String
 	"""
+	# contacts = frappe.get_all(
+	# 	"Contact",
+	# 	filters=[
+	# 		["Dynamic Link", "link_doctype", "=", doctype],
+	# 		["Dynamic Link", "link_name", "=", name],
+	# 	],
+	# 	or_filters=[
+	# 		["is_primary_contact", "=", 1],
+	# 		["is_billing_contact", "=", 1],
+	# 	],
+	# 	pluck="name",
+	# 	limit=1,
+	# 	order_by="is_primary_contact DESC, is_billing_contact DESC",
+	# )
+	contact_meta = frappe.get_meta("Contact")
+
+	order_by = "is_primary_contact DESC"
+
+	or_filters = [["is_primary_contact", "=", 1]]
+
+	if contact_meta.has_field("is_billing_contact"):
+		or_filters.append(["is_billing_contact", "=", 1])
+		order_by = "is_primary_contact DESC, is_billing_contact DESC"
+
 	contacts = frappe.get_all(
 		"Contact",
 		filters=[
 			["Dynamic Link", "link_doctype", "=", doctype],
 			["Dynamic Link", "link_name", "=", name],
 		],
-		or_filters=[
-			["is_primary_contact", "=", 1],
-			["is_billing_contact", "=", 1],
-		],
+		or_filters=or_filters,
 		pluck="name",
 		limit=1,
-		order_by="is_primary_contact DESC, is_billing_contact DESC",
+		order_by=order_by,
 	)
-
+	
 	return contacts[0] if contacts else None
 
 
