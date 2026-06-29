@@ -4753,3 +4753,22 @@ def get_transferred_qty(material_request):
 	).run(as_dict=True)
 
 	return query[0]
+
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def work_order_query(doctype, txt, searchfield, start, page_len, filters):
+	work_order = frappe.qb.DocType("Work Order")
+
+	return (
+		frappe.qb.from_(work_order)
+		.select(work_order.name)
+		.where(
+			(work_order.docstatus == 1)
+			& (work_order.company == filters.get("company"))
+			& (work_order.qty > work_order.produced_qty)
+			& (work_order.name.like(f"%{txt}%"))
+		)
+		.limit(page_len)
+		.offset(start)
+	).run()
