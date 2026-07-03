@@ -9,10 +9,10 @@ import frappe
 from frappe import qb, scrub
 from frappe.desk.reportview import get_filters_cond, get_match_cond
 from frappe.permissions import has_permission
-from frappe.query_builder import Criterion, CustomFunction
+from frappe.query_builder import Criterion
 from frappe.query_builder.functions import Concat, Locate, Sum
 from frappe.utils import cint, nowdate, today, unique
-from pypika import Order
+from pypika import Case, Order
 
 import erpnext
 from erpnext.accounts.utils import build_qb_match_conditions
@@ -194,8 +194,10 @@ def item_query(doctype, txt, searchfield, start, page_len, filters, as_dict=Fals
 		columns += ", " + ", ".join(extra_searchfields)
 
 	if "description" in searchfields:
-		columns += """, if(length(tabItem.description) > 40, \
-			concat(substr(tabItem.description, 1, 40), "..."), description) as description"""
+		# MySQL IF() and the "..." literal (an identifier on PG) are not portable;
+		# use CASE with a single-quoted literal and backtick-quote the table.
+		columns += """, CASE WHEN length(`tabItem`.description) > 40 \
+			THEN concat(substr(`tabItem`.description, 1, 40), '...') ELSE description END as description"""
 
 	searchfields = searchfields + [
 		field
@@ -262,30 +264,44 @@ def item_query(doctype, txt, searchfield, start, page_len, filters, as_dict=Fals
 	description_cond = ""
 	if frappe.db.estimate_count(doctype) < 50000:
 		# scan description only if items are less than 50000
-		description_cond = "or tabItem.description LIKE %(txt)s"
+		description_cond = "or `tabItem`.description LIKE %(txt)s"
 
+	# '0000-00-00' is not a valid PostgreSQL date; on PG treat a missing end_of_life
+	# as NULL (ifnull is auto-rewritten to coalesce by frappe for both backends).
+	if frappe.db.db_type == "postgres":
+		end_of_life_cond = "`tabItem`.end_of_life > %(today)s or `tabItem`.end_of_life is null"
+	else:
+		end_of_life_cond = (
+			"`tabItem`.end_of_life > %(today)s "
+			"or ifnull(`tabItem`.end_of_life, '0000-00-00') = '0000-00-00'"
+		)
+
+	# Backtick-quote the table (bare tabItem breaks on PG, which folds unquoted
+	# identifiers to lowercase); MySQL IF()/locate ordering becomes CASE (locate is
+	# rewritten to strpos on PG); LIMIT x, y becomes LIMIT y OFFSET x.
 	return frappe.db.sql(
 		"""select
-			tabItem.name {columns}
-		from tabItem
-		where tabItem.docstatus < 2
-			and tabItem.disabled=0
-			and tabItem.has_variants=0
-			and (tabItem.end_of_life > %(today)s or ifnull(tabItem.end_of_life, '0000-00-00')='0000-00-00')
-			and ({scond} or tabItem.item_code IN (select parent from `tabItem Barcode` where barcode LIKE %(txt)s)
+			`tabItem`.name {columns}
+		from `tabItem`
+		where `tabItem`.docstatus < 2
+			and `tabItem`.disabled=0
+			and `tabItem`.has_variants=0
+			and ({end_of_life_cond})
+			and ({scond} or `tabItem`.item_code IN (select parent from `tabItem Barcode` where barcode LIKE %(txt)s)
 				{description_cond})
 			{fcond} {mcond}
 		order by
-			if(locate(%(_txt)s, name), locate(%(_txt)s, name), 99999),
-			if(locate(%(_txt)s, item_name), locate(%(_txt)s, item_name), 99999),
+			case when locate(%(_txt)s, name) > 0 then locate(%(_txt)s, name) else 99999 end,
+			case when locate(%(_txt)s, item_name) > 0 then locate(%(_txt)s, item_name) else 99999 end,
 			idx desc,
 			name, item_name
-		limit %(start)s, %(page_len)s """.format(
+		limit %(page_len)s offset %(start)s """.format(
 			columns=columns,
 			scond=searchfields,
 			fcond=get_filters_cond(doctype, filters, conditions).replace("%", "%%"),
 			mcond=get_match_cond(doctype).replace("%", "%%"),
 			description_cond=description_cond,
+			end_of_life_cond=end_of_life_cond,
 		),
 		{
 			"today": nowdate(),
@@ -336,7 +352,6 @@ def get_project_name(doctype, txt, searchfield, start, page_len, filters):
 	proj = qb.DocType("Project")
 	qb_filter_and_conditions = []
 	qb_filter_or_conditions = []
-	ifelse = CustomFunction("IF", ["condition", "then", "else"])
 
 	if filters:
 		if filters.get("customer"):
@@ -370,7 +385,10 @@ def get_project_name(doctype, txt, searchfield, start, page_len, filters):
 	# ordering
 	if txt:
 		# project_name containing search string 'txt' will be given higher precedence
-		q = q.orderby(ifelse(Locate(txt, proj.project_name) > 0, Locate(txt, proj.project_name), 99999))
+		# MySQL IF() is not portable; use CASE (Locate maps to strpos on PG).
+		q = q.orderby(
+			Case().when(Locate(txt, proj.project_name) > 0, Locate(txt, proj.project_name)).else_(99999)
+		)
 	q = q.orderby(proj.idx, order=Order.desc).orderby(proj.name)
 
 	if page_len:

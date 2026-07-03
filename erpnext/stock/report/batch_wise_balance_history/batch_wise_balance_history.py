@@ -147,7 +147,8 @@ def get_stock_ledger_entries_for_batch_no(filters):
 			& (sle.batch_no != "")
 			& (sle.posting_datetime < posting_datetime)
 		)
-		.groupby(sle.voucher_no, sle.batch_no, sle.item_code, sle.warehouse)
+		# posting_date is selected but not aggregated; add it for PG strict GROUP BY.
+		.groupby(sle.voucher_no, sle.batch_no, sle.item_code, sle.warehouse, sle.posting_date)
 	)
 
 	query = apply_warehouse_filter(query, sle, filters)
@@ -195,7 +196,16 @@ def get_stock_ledger_entries_for_batch_bundle(filters):
 			& (sle.has_batch_no == 1)
 			& (sle.posting_datetime <= to_date)
 		)
-		.groupby(sle.voucher_no, batch_package.batch_no, batch_package.warehouse)
+		# sle.item_code, sle.warehouse and sle.posting_date are selected but not
+		# aggregated; add them for PG strict GROUP BY (keeping the original keys).
+		.groupby(
+			sle.voucher_no,
+			sle.item_code,
+			sle.warehouse,
+			sle.posting_date,
+			batch_package.batch_no,
+			batch_package.warehouse,
+		)
 	)
 
 	query = apply_warehouse_filter(query, sle, filters)

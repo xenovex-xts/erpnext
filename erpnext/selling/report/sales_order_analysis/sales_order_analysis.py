@@ -6,9 +6,8 @@ from collections import OrderedDict
 
 import frappe
 from frappe import _, qb
-from frappe.query_builder import CustomFunction
 from frappe.query_builder.functions import Max
-from frappe.utils import date_diff, flt, getdate
+from frappe.utils import date_diff, flt, get_datetime, getdate
 
 
 def execute(filters=None):
@@ -58,18 +57,30 @@ def get_conditions(filters):
 
 	return conditions
 
-
 def get_data(conditions, filters):
+	# DATEDIFF() is MySQL-only; PostgreSQL subtracts dates directly. Both yield an
+	# integer number of days.
+	if frappe.db.db_type == "postgres":
+		delay_days_expr = "(CURRENT_DATE - soi.delivery_date)"
+	else:
+		delay_days_expr = "DATEDIFF(CURRENT_DATE, soi.delivery_date)"
+
 	data = frappe.db.sql(
 		f"""
 		SELECT
 			so.transaction_date as date,
 			soi.delivery_date as delivery_date,
 			so.name as sales_order,
-			so.status, so.customer, soi.item_code,
-			DATEDIFF(CURRENT_DATE, soi.delivery_date) as delay_days,
-			IF(so.status in ('Completed','To Bill'), 0, (SELECT delay_days)) as delay,
-			soi.qty, soi.delivered_qty,
+			so.status,
+			so.customer,
+			soi.item_code,
+			{delay_days_expr} as delay_days,
+			CASE
+				WHEN so.status IN ('Completed', 'To Bill') THEN 0
+				ELSE {delay_days_expr}
+			END as delay,
+			soi.qty,
+			soi.delivered_qty,
 			(soi.qty - soi.delivered_qty) AS pending_qty,
 			IFNULL(SUM(sii.qty), 0) as billed_qty,
 			soi.base_amount as amount,
@@ -77,7 +88,8 @@ def get_data(conditions, filters):
 			(soi.billed_amt * IFNULL(so.conversion_rate, 1)) as billed_amount,
 			(soi.base_amount - (soi.billed_amt * IFNULL(so.conversion_rate, 1))) as pending_amount,
 			soi.warehouse as warehouse,
-			so.company, soi.name,
+			so.company,
+			soi.name,
 			soi.description as description
 		FROM
 			`tabSales Order` so,
@@ -89,16 +101,19 @@ def get_data(conditions, filters):
 			and so.status not in ('Stopped', 'On Hold')
 			and so.docstatus = 1
 			{conditions}
-		GROUP BY soi.name
-		ORDER BY so.transaction_date ASC, soi.item_code ASC
-	""",
+		GROUP BY
+			soi.name,
+			so.name
+		ORDER BY
+			so.transaction_date ASC,
+			soi.item_code ASC
+		""",
 		filters,
 		as_dict=1,
 	)
 
 	return data
-
-
+	
 def get_so_elapsed_time(data):
 	"""
 	query SO's elapsed time till latest delivery note
@@ -112,8 +127,6 @@ def get_so_elapsed_time(data):
 		dn = qb.DocType("Delivery Note")
 		dni = qb.DocType("Delivery Note Item")
 
-		to_seconds = CustomFunction("TO_SECONDS", ["date"])
-
 		query = (
 			qb.from_(so)
 			.inner_join(soi)
@@ -125,21 +138,26 @@ def get_so_elapsed_time(data):
 			.select(
 				so.name.as_("sales_order"),
 				soi.item_code.as_("so_item_code"),
-				(to_seconds(Max(dn.posting_date)) - to_seconds(so.transaction_date)).as_("elapsed_seconds"),
+				Max(dn.posting_date).as_("last_delivery_date"),
+				so.transaction_date.as_("transaction_date"),
 			)
 			.where((so.name.isin(sales_orders)) & (dn.docstatus == 1))
 			.orderby(so.name, soi.name)
-			.groupby(soi.name)
+			.groupby(soi.name, so.name)
 		)
+
 		dn_elapsed_time = query.run(as_dict=True)
 
 		for e in dn_elapsed_time:
 			key = (e.sales_order, e.so_item_code)
-			so_elapsed_time[key] = e.elapsed_seconds
+			if e.last_delivery_date and e.transaction_date:
+				so_elapsed_time[key] = (
+					get_datetime(e.last_delivery_date) - get_datetime(e.transaction_date)
+				).total_seconds()
 
 	return so_elapsed_time
 
-
+	
 def prepare_data(data, so_elapsed_time, filters):
 	completed, pending = 0, 0
 

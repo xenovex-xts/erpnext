@@ -431,7 +431,9 @@ def reconcile(doc: None | str = None) -> None:
 					# Update reconciled flag
 					allocation_names = [x.name for x in allocations]
 					ppa = qb.DocType("Process Payment Reconciliation Log Allocations")
-					qb.update(ppa).set(ppa.reconciled, True).where(ppa.name.isin(allocation_names)).run()
+					# reconciled is a Check (integer) column; set 1, not a Python bool,
+					# which PostgreSQL rejects for an integer column.
+					qb.update(ppa).set(ppa.reconciled, 1).where(ppa.name.isin(allocation_names)).run()
 
 					# Update reconciled count
 					reconciled_count = frappe.db.count(

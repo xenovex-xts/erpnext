@@ -282,17 +282,19 @@ def get_item_map(item_code, include_uom):
 	bin = frappe.qb.DocType("Bin")
 	item = frappe.qb.DocType("Item")
 
+	# The '0000-00-00' zero date is a MySQL-ism and is not a valid PostgreSQL date,
+	# so only apply that clause on MariaDB.
+	eol_condition = (item.end_of_life > today()) | (item.end_of_life.isnull())
+	if frappe.db.db_type != "postgres":
+		eol_condition = eol_condition | (item.end_of_life == "0000-00-00")
+
 	query = (
 		frappe.qb.from_(item)
 		.select(item.name, item.item_name, item.description, item.item_group, item.brand, item.stock_uom)
 		.where(
 			(item.is_stock_item == 1)
 			& (item.disabled == 0)
-			& (
-				(item.end_of_life > today())
-				| (item.end_of_life.isnull())
-				| (item.end_of_life == "0000-00-00")
-			)
+			& eol_condition
 			& (ExistsCriterion(frappe.qb.from_(bin).select(bin.name).where(bin.item_code == item.name)))
 		)
 	)

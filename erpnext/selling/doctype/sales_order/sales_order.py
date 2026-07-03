@@ -14,6 +14,18 @@ from frappe.model.mapper import get_mapped_doc
 from frappe.model.utils import get_fetch_values
 from frappe.query_builder.functions import Sum
 from frappe.utils import add_days, cint, cstr, flt, get_link_to_form, getdate, nowdate, parse_json, strip_html
+from frappe.utils import (
+	add_days,
+	cint,
+	cstr,
+	flt,
+	get_datetime,
+	get_link_to_form,
+	getdate,
+	nowdate,
+	parse_json,
+	strip_html,
+)
 
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import (
 	unlink_inter_company_doc,
@@ -595,9 +607,16 @@ class SalesOrder(SellingController):
 
 	def check_modified_date(self):
 		mod_db = frappe.db.get_value("Sales Order", self.name, "modified")
-		date_diff = frappe.db.sql(f"select TIMEDIFF('{mod_db}', '{cstr(self.modified)}')")
-		if date_diff and date_diff[0][0]:
-			frappe.throw(_("{0} {1} has been modified. Please refresh.").format(self.doctype, self.name))
+		# TIMEDIFF is MySQL-only; compute the difference in Python instead.
+		date_diff = (get_datetime(mod_db) - get_datetime(self.modified)).total_seconds()
+
+		if date_diff:
+			frappe.throw(
+				_("{0} {1} has been modified. Please refresh.").format(
+					self.doctype,
+					self.name,
+				)
+			)
 
 	def update_status(self, status):
 		self.check_modified_date()

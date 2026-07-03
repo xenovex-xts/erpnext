@@ -240,6 +240,41 @@ def get_entries(filters):
 	return query.run(as_dict=True)
 
 
+def get_conditions(filters, date_field):
+	conditions = [""]
+	values = []
+
+	for field in ["company", "customer", "territory"]:
+		if filters.get(field):
+			conditions.append(f"dt.{field}=%s")
+			values.append(filters[field])
+
+	if filters.get("sales_person"):
+		lft, rgt = frappe.get_value("Sales Person", filters.get("sales_person"), ["lft", "rgt"])
+		conditions.append(
+			f"exists(select name from `tabSales Person` where lft >= {lft} and rgt <= {rgt} and name=st.sales_person)"
+		)
+
+	if filters.get("from_date"):
+		conditions.append(f"dt.{date_field}>=%s")
+		values.append(filters["from_date"])
+
+	if filters.get("to_date"):
+		conditions.append(f"dt.{date_field}<=%s")
+		values.append(filters["to_date"])
+
+	items = get_items(filters)
+	if items:
+		conditions.append("dt_item.item_code in (%s)" % ", ".join(["%s"] * len(items)))
+		values += items
+	else:
+		# return empty result, if no items are fetched after filtering on
+		# 'item group' and 'brand'
+		conditions.append("dt_item.item_code = Null")
+
+	return " and ".join(conditions), values
+
+
 def get_items(filters):
 	item = qb.DocType("Item")
 

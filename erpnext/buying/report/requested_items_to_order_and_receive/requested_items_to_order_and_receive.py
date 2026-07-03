@@ -72,7 +72,18 @@ def get_data(filters):
 
 	query = get_conditions(filters, query, mr, mr_item)  # add conditional conditions
 
-	query = query.groupby(mr.name, mr_item.item_code).orderby(mr.transaction_date, mr.schedule_date)
+	# PG strict GROUP BY: mr.name (PK) frees all mr.* columns, but mr_item.item_code
+	# is not a primary key, so the selected non-aggregated mr_item.* columns must be
+	# grouped explicitly. orderby uses mr.* columns, freed by mr.name.
+	query = query.groupby(
+		mr.name,
+		mr_item.item_code,
+		mr_item.schedule_date,
+		mr_item.uom,
+		mr_item.stock_uom,
+		mr_item.item_name,
+		mr_item.description,
+	).orderby(mr.transaction_date, mr.schedule_date)
 	data = query.run(as_dict=True)
 	return data
 

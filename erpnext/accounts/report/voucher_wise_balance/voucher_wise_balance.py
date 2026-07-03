@@ -45,7 +45,9 @@ def get_data(filters):
 		frappe.qb.from_(gle)
 		.select(gle.voucher_type, gle.voucher_no, Sum(gle.debit).as_("debit"), Sum(gle.credit).as_("credit"))
 		.where(gle.is_cancelled == 0)
-		.groupby(gle.voucher_no)
+		# voucher_type is selected but not aggregated and voucher_no is not the
+		# primary key, so PG strict GROUP BY needs voucher_type listed too.
+		.groupby(gle.voucher_type, gle.voucher_no)
 	)
 	query = apply_filters(query, filters, gle)
 	gl_entries = query.run(as_dict=True)

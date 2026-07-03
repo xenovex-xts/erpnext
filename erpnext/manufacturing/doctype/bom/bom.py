@@ -1332,11 +1332,14 @@ def get_valuation_rate(data):
 		.join(wh_table)
 		.on(bin_table.warehouse == wh_table.name)
 		.select(
+			# PostgreSQL raises on division by zero (MariaDB returns NULL), so guard
+			# Sum(actual_qty) != 0 in the CASE rather than dividing then coalescing.
 			Case()
 			.when(
-				Count(bin_table.name) > 0, IfNull(Sum(bin_table.stock_value) / Sum(bin_table.actual_qty), 0.0)
+				(Count(bin_table.name) > 0) & (Sum(bin_table.actual_qty) != 0),
+				Sum(bin_table.stock_value) / Sum(bin_table.actual_qty),
 			)
-			.else_(None)
+			.else_(0.0)
 			.as_("valuation_rate")
 		)
 		.where((bin_table.item_code == item_code) & (wh_table.company == company))

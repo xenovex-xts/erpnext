@@ -9,7 +9,7 @@ import frappe
 from frappe import ValidationError, _, qb, scrub, throw
 from frappe.model.meta import get_field_precision
 from frappe.query_builder import Tuple
-from frappe.query_builder.functions import Count
+from frappe.query_builder.functions import Count, Max
 from frappe.utils import cint, comma_or, flt, getdate, nowdate
 from frappe.utils.data import comma_and, fmt_money, get_link_to_form
 from pypika import Case
@@ -2140,7 +2140,9 @@ def get_matched_payment_request_of_references(references=None):
 			PR.reference_doctype,
 			PR.reference_name,
 			PR.outstanding_amount.as_("allocated_amount"),
-			PR.name.as_("payment_request"),
+			# Grouped by other columns (not PR.name), so PR.name must be aggregated
+			# to satisfy PG strict GROUP BY.
+			Max(PR.name).as_("payment_request"),
 			Count("*").as_("count"),
 		)
 		.where(Tuple(PR.reference_doctype, PR.reference_name, PR.outstanding_amount).isin(refs))
@@ -2593,12 +2595,19 @@ def get_orders_to_be_billed(
 		grand_total_field = "grand_total"
 		rounded_total_field = "rounded_total"
 
+	# MySQL if(x, x, y) is not portable; use CASE (also PG reads "Closed" as an
+	# identifier, so the string literal must be single-quoted).
+	invoice_amount_expr = (
+		f"CASE WHEN {rounded_total_field} IS NOT NULL AND {rounded_total_field} <> 0"
+		f" THEN {rounded_total_field} ELSE {grand_total_field} END"
+	)
+
 	orders = frappe.db.sql(
 		"""
 		select
 			name as voucher_no,
-			if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) as invoice_amount,
-			(if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) - advance_paid) as outstanding_amount,
+			{invoice_amount_expr} as invoice_amount,
+			({invoice_amount_expr} - advance_paid) as outstanding_amount,
 			transaction_date as posting_date
 		from
 			`tab{voucher_type}`
@@ -2606,16 +2615,15 @@ def get_orders_to_be_billed(
 			{party_type} = %s
 			and docstatus = 1
 			and company = %s
-			and status != "Closed"
-			and if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) > advance_paid
+			and status != 'Closed'
+			and {invoice_amount_expr} > advance_paid
 			and abs(100 - per_billed) > 0.01
 			{condition}
 		order by
 			transaction_date, name
 	""".format(
 			**{
-				"rounded_total_field": rounded_total_field,
-				"grand_total_field": grand_total_field,
+				"invoice_amount_expr": invoice_amount_expr,
 				"voucher_type": voucher_type,
 				"party_type": scrub(party_type),
 				"condition": condition,
@@ -2670,11 +2678,18 @@ def get_negative_outstanding_invoices(
 		grand_total_field = "grand_total"
 		rounded_total_field = "rounded_total"
 
+	# MySQL if(x, x, y) is not portable; use CASE. Also single-quote the voucher_type
+	# string literal (PG reads "..." as an identifier).
+	invoice_amount_expr = (
+		f"CASE WHEN {rounded_total_field} IS NOT NULL AND {rounded_total_field} <> 0"
+		f" THEN {rounded_total_field} ELSE {grand_total_field} END"
+	)
+
 	return frappe.db.sql(
 		"""
 		select
-			"{voucher_type}" as voucher_type, name as voucher_no, {account} as account,
-			if({rounded_total_field}, {rounded_total_field}, {grand_total_field}) as invoice_amount,
+			'{voucher_type}' as voucher_type, name as voucher_no, {account} as account,
+			{invoice_amount_expr} as invoice_amount,
 			outstanding_amount, posting_date,
 			due_date, conversion_rate as exchange_rate
 		from
@@ -2690,8 +2705,7 @@ def get_negative_outstanding_invoices(
 			**{
 				"supplier_condition": supplier_condition,
 				"condition": condition,
-				"rounded_total_field": rounded_total_field,
-				"grand_total_field": grand_total_field,
+				"invoice_amount_expr": invoice_amount_expr,
 				"voucher_type": voucher_type,
 				"party_type": scrub(party_type),
 				"party_account": "debit_to" if party_type == "Customer" else "credit_to",

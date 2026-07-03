@@ -319,7 +319,19 @@ def get_producible_fg_items(filters):
 			Floor(bin_subquery.actual_qty / ((Sum(BOM_ITEM.stock_qty)) / BOM.quantity)),
 		)
 		.where((BOM_ITEM.parent == filters.get("bom")) & (BOM_ITEM.parenttype == "BOM"))
-		.groupby(BOM_ITEM.item_code)
+		# Grouping is on item_code (not a primary key) to aggregate stock_qty, so PG
+		# strict GROUP BY requires every other non-aggregated selected column,
+		# including the foreign BOM.quantity / bin_subquery.actual_qty and the idx
+		# used for ordering.
+		.groupby(
+			BOM_ITEM.item_code,
+			BOM_ITEM.description,
+			BOM_ITEM.parent,
+			BOM_ITEM.stock_qty,
+			BOM.quantity,
+			bin_subquery.actual_qty,
+			BOM_ITEM.idx,
+		)
 		.orderby(BOM_ITEM.idx)
 	)
 

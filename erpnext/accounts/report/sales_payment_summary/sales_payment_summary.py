@@ -127,11 +127,14 @@ def get_pos_invoice_data(filters):
 		"mode_of_payment, warehouse, cost_center "
 		"FROM ("
 		"SELECT "
-		'parent, item_code, sum(amount) as "base_total", warehouse, cost_center '
-		"from `tabSales Invoice Item`  group by parent"
+		# parent is a foreign key (not the PK), so MAX()-wrap the non-aggregated
+		# columns for PG strict GROUP BY.
+		'parent, MAX(item_code) as item_code, sum(amount) as "base_total", '
+		'MAX(warehouse) as warehouse, MAX(cost_center) as cost_center '
+		"from `tabSales Invoice Item` group by parent"
 		") t1 "
 		"left join "
-		"(select parent, mode_of_payment from `tabSales Invoice Payment` group by parent) t3 "
+		"(select parent, MAX(mode_of_payment) as mode_of_payment from `tabSales Invoice Payment` group by parent) t3 "
 		"on (t3.parent = t1.parent) "
 		"JOIN ("
 		"SELECT "
@@ -145,8 +148,10 @@ def get_pos_invoice_data(filters):
 		"t1.parent = a.name and t1.base_total = a.base_total) "
 		"WHERE a.docstatus = 1"
 		f" AND {conditions} "
+		# cost_center and mode_of_payment are selected (from t1/t3) but not
+		# aggregated, so add them to GROUP BY for PG.
 		"GROUP BY "
-		"owner, posting_date, warehouse",
+		"owner, posting_date, warehouse, cost_center, mode_of_payment",
 		filters,
 		as_dict=1,
 	)

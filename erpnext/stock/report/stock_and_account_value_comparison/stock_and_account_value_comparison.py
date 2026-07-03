@@ -91,12 +91,17 @@ def get_stock_ledger_data(report_filters, filters):
 		"Stock Ledger Entry",
 		filters=filters,
 		fields=[
-			"name",
+			# Aggregate per voucher (group_by voucher_type, voucher_no). name,
+			# posting_date and posting_time are non-aggregated columns not covered
+			# by the GROUP BY, so wrap them in MAX() for PG strict GROUP BY rather
+			# than adding them to GROUP BY (which would defeat the SUM by making
+			# every row its own group).
+			{"MAX": "name", "as": "name"},
 			"voucher_type",
 			"voucher_no",
 			{"SUM": "stock_value_difference", "as": "stock_value"},
-			"posting_date",
-			"posting_time",
+			{"MAX": "posting_date", "as": "posting_date"},
+			{"MAX": "posting_time", "as": "posting_time"},
 		],
 		group_by="voucher_type, voucher_no",
 		order_by="posting_date ASC, posting_time ASC",
@@ -118,10 +123,12 @@ def get_gl_data(report_filters, filters):
 		"GL Entry",
 		filters=filters,
 		fields=[
-			"name",
+			# Same as get_stock_ledger_data: aggregate per voucher and MAX()-wrap the
+			# non-aggregated name/posting_date columns for PG strict GROUP BY.
+			{"MAX": "name", "as": "name"},
 			"voucher_type",
 			"voucher_no",
-			"posting_date",
+			{"MAX": "posting_date", "as": "posting_date"},
 			{
 				"SUB": [{"SUM": "debit_in_account_currency"}, {"SUM": "credit_in_account_currency"}],
 				"as": "account_value",

@@ -8,9 +8,9 @@ import frappe
 from frappe import _, bold
 from frappe.model.document import Document
 from frappe.model.naming import NamingSeries
-from frappe.query_builder import Interval
-from frappe.query_builder.functions import Count, CurDate, UnixTimestamp
+from frappe.query_builder.functions import Count, UnixTimestamp
 from frappe.utils import (
+	add_years,
 	cint,
 	cstr,
 	flt,
@@ -21,6 +21,7 @@ from frappe.utils import (
 	nowtime,
 	strip,
 	strip_html,
+	today,
 )
 from frappe.utils.html_utils import clean_html
 from pypika import Order
@@ -1235,7 +1236,9 @@ def get_timeline_data(doctype: str, name: str) -> dict[int, int]:
 		frappe.qb.from_(sle)
 		.select(UnixTimestamp(sle.posting_date), Count("*"))
 		.where(sle.item_code == name)
-		.where(sle.posting_date > CurDate() - Interval(years=1))
+		# Compute the cutoff date in Python (portable) rather than with SQL date
+		# arithmetic, which differs between MariaDB and PostgreSQL.
+		.where(sle.posting_date > add_years(today(), -1))
 		.groupby(sle.posting_date)
 		.run()
 	)

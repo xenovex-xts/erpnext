@@ -13,12 +13,14 @@ from frappe.custom.doctype.property_setter.property_setter import make_property_
 from frappe.desk.page.setup_wizard.setup_wizard import make_records
 from frappe.utils import (
 	add_months,
+	add_years,
 	cint,
 	formatdate,
 	get_first_day,
 	get_last_day,
 	get_link_to_form,
 	get_timestamp,
+	nowdate,
 	today,
 )
 from frappe.utils.nestedset import NestedSet, rebuild_tree
@@ -962,6 +964,8 @@ def add_node():
 def get_all_transactions_annual_history(company):
 	out = {}
 
+	# CURDATE()/DATE_SUB are MySQL-only; compute in Python and bind as a param.
+	one_year_ago = add_years(nowdate(), -1)
 	items = frappe.db.sql(
 		"""
 		select transaction_date, count(*) as count
@@ -999,12 +1003,12 @@ def get_all_transactions_annual_history(company):
 		where
 			company=%s
 			and
-			transaction_date > date_sub(curdate(), interval 1 year)
+			transaction_date > %s
 
 		group by
 			transaction_date
 			""",
-		(company),
+		(company, one_year_ago),
 		as_dict=True,
 	)
 

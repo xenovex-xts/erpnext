@@ -4,8 +4,8 @@
 
 import frappe
 from frappe import _
-from frappe.query_builder import CustomFunction
-from frappe.utils import cint
+from frappe.query_builder import Order
+from frappe.utils import cint, date_diff, nowdate
 
 
 def execute(filters=None):
@@ -102,12 +102,11 @@ def get_sales_details(filters):
 	child_doctype = "Sales Order Item" if filters["based_on"] == "Sales Order" else "Sales Invoice Item"
 	child = frappe.qb.DocType(child_doctype)
 
-	date_diff = CustomFunction("DATEDIFF", ["d1", "d2"])
-	current_date = CustomFunction("CURRENT_DATE", [])
-
 	date_col = parent.transaction_date if filters["based_on"] == "Sales Order" else parent.posting_date
-	days_since_last_order = date_diff(current_date(), date_col)
 
+	# DATEDIFF()/CURRENT_DATE() are MySQL-only; select the raw date and compute the
+	# day difference in Python. Ordering by the date descending preserves the
+	# original "fewest days since last order first" ordering that setdefault relies on.
 	sales_data = (
 		frappe.qb.from_(parent)
 		.inner_join(child)
@@ -119,13 +118,14 @@ def get_sales_details(filters):
 			child.item_code,
 			child.qty,
 			date_col.as_("last_order_date"),
-			days_since_last_order.as_("days_since_last_order"),
 		)
 		.where(parent.docstatus == 1)
-		.orderby(days_since_last_order)
+		.orderby(date_col, order=Order.desc)
 	).run(as_dict=True)
 
+	today = nowdate()
 	for d in sales_data:
+		d.days_since_last_order = date_diff(today, d.last_order_date)
 		item_details_map.setdefault((d.territory, d.item_code), d)
 
 	return item_details_map

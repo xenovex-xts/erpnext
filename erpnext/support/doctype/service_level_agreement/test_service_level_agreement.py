@@ -2,6 +2,7 @@
 # See license.txt
 import datetime
 import json
+import unittest
 
 import frappe
 from frappe.utils import flt

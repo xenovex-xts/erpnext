@@ -3395,8 +3395,18 @@ class StockEntry(StockController, SubcontractingInwardController):
 				& (job_card.work_order == self.work_order)
 				& (job_card.docstatus == 1)
 			)
-			.groupby(job_card_secondary_item.item_code, job_card_secondary_item.type)
-			.orderby(job_card_secondary_item.idx)
+			# PG strict GROUP BY: group every selected non-aggregated Job Card
+			# Secondary Item column (item_code is not a primary key). idx is not
+			# grouped, so order by the grouped item_code instead.
+			.groupby(
+				job_card_secondary_item.item_code,
+				job_card_secondary_item.item_name,
+				job_card_secondary_item.description,
+				job_card_secondary_item.stock_uom,
+				job_card_secondary_item.type,
+				job_card_secondary_item.bom_secondary_item,
+			)
+			.orderby(job_card_secondary_item.item_code)
 		)
 
 		if self.job_card:

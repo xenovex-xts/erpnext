@@ -907,6 +907,9 @@ class WorkOrder(Document):
 					"production_plan_item": self.production_plan_item,
 				},
 				as_list=1,
+				# Clear the ORM's default order_by=modified: on an aggregate query it
+				# is an ungrouped column and errors under PG strict GROUP BY.
+				order_by="",
 			)
 
 			produced_qty = total_qty[0][0] if total_qty else 0
@@ -1547,17 +1550,23 @@ class WorkOrder(Document):
 			if actual_end_dates:
 				self.actual_end_date = max(actual_end_dates)
 		else:
+			# TIMESTAMP(date, time) is a MySQL-only constructor; fetch the parts and
+			# combine them in Python (portable) instead.
 			data = frappe.get_all(
 				"Stock Entry",
-				fields=[{"TIMESTAMP": ["posting_date", "posting_time"], "as": "posting_datetime"}],
+				fields=["posting_date", "posting_time"],
 				filters={
 					"work_order": self.name,
 					"purpose": ("in", ["Material Transfer for Manufacture", "Manufacture"]),
 				},
 			)
 
-			if data and len(data):
-				dates = [d.posting_datetime for d in data]
+			dates = [
+				get_datetime(f"{d.posting_date} {d.posting_time}")
+				for d in data
+				if d.posting_date and d.posting_time
+			]
+			if dates:
 				self.db_set("actual_start_date", min(dates))
 
 				if self.status == "Completed":
@@ -1798,11 +1807,12 @@ class WorkOrder(Document):
 				& (ste.purpose == "Material Transfer for Manufacture")
 				& (ste.is_return == is_return)
 			)
-			.groupby(ste_child.item_code)
+			.groupby(ste_child.item_code, ste_child.original_item)
 		)
 
 		data = query.run(as_dict=1) or []
 		return frappe._dict({d.original_item or d.item_code: d.qty for d in data})
+
 
 	def recompute_material_transferred_for_manufacturing(self, transferred_items):
 		"""Set material_transferred_for_manufacturing based on actual item-level transfers, not fg_completed_qty."""
@@ -1878,6 +1888,30 @@ class WorkOrder(Document):
 
 	def update_returned_qty(self):
 		returned_dict = self._material_transfer_qty_by_item(is_return=1)
+		ste = frappe.qb.DocType("Stock Entry")
+		ste_child = frappe.qb.DocType("Stock Entry Detail")
+
+		query = (
+			frappe.qb.from_(ste)
+			.inner_join(ste_child)
+			.on(ste_child.parent == ste.name)
+			.select(
+				ste_child.item_code,
+				ste_child.original_item,
+				fn.Sum(ste_child.transfer_qty).as_("qty"),
+			)
+			.where(
+				(ste.docstatus == 1)
+				& (ste.work_order == self.name)
+				& (ste.purpose == "Material Transfer for Manufacture")
+				& (ste.is_return == 1)
+			)
+			# original_item is selected but not aggregated; add it for PG strict GROUP BY.
+			.groupby(ste_child.item_code, ste_child.original_item)
+		)
+
+		data = query.run(as_dict=1) or []
+		returned_dict = frappe._dict({d.original_item or d.item_code: d.qty for d in data})
 
 		for row in self.required_items:
 			row.db_set("returned_qty", (returned_dict.get(row.item_code) or 0.0), update_modified=False)
@@ -2493,16 +2527,22 @@ def get_bom_operations(doctype, txt, searchfield, start, page_len, filters):
 
 @frappe.whitelist()
 def get_item_details(item, project=None, skip_bom_info=False, throw=True):
+	# '0000-00-00' is not a valid PostgreSQL date; only match the zero-date on MariaDB.
+	if frappe.db.db_type == "postgres":
+		eol_cond = "end_of_life is null or end_of_life > %(today)s"
+	else:
+		eol_cond = "end_of_life is null or end_of_life = '0000-00-00' or end_of_life > %(today)s"
+
 	res = frappe.db.sql(
-		"""
+		f"""
 		select stock_uom, description, item_name, allow_alternative_item,
 			include_item_in_manufacturing
 		from `tabItem`
 		where disabled=0
-			and (end_of_life is null or end_of_life='0000-00-00' or end_of_life > %s)
-			and name=%s
+			and ({eol_cond})
+			and name=%(name)s
 	""",
-		(nowdate(), item),
+		{"today": nowdate(), "name": item},
 		as_dict=1,
 	)
 

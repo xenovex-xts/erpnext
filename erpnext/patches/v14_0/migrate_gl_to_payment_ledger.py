@@ -4,6 +4,10 @@ from frappe.query_builder import CustomFunction
 from frappe.query_builder.custom import ConstantColumn
 from frappe.query_builder.functions import Count, IfNull
 from frappe.utils import flt
+from frappe.query_builder.custom import ConstantColumn
+from frappe.query_builder.functions import Count, IfNull
+from frappe.utils import flt
+from pypika.terms import Case
 
 from erpnext.accounts.doctype.accounting_dimension.accounting_dimension import (
 	get_dimensions,
@@ -111,7 +115,6 @@ def execute():
 
 		gl = qb.DocType("GL Entry")
 		account = qb.DocType("Account")
-		ifelse = CustomFunction("IF", ["condition", "then", "else"])
 
 		# Get Records Count
 		relavant_accounts = (
@@ -151,13 +154,15 @@ def execute():
 					.select(
 						gl.star,
 						ConstantColumn(1).as_("docstatus"),
+						# MySQL IF() errors on PostgreSQL; CASE is portable.
 						IfNull(
-							ifelse(gl.against_voucher_type == "", None, gl.against_voucher_type),
+							Case().when(gl.against_voucher_type == "", None).else_(gl.against_voucher_type),
 							gl.voucher_type,
 						).as_("against_voucher_type"),
-						IfNull(ifelse(gl.against_voucher == "", None, gl.against_voucher), gl.voucher_no).as_(
-							"against_voucher_no"
-						),
+						IfNull(
+							Case().when(gl.against_voucher == "", None).else_(gl.against_voucher),
+							gl.voucher_no,
+						).as_("against_voucher_no"),
 					)
 					.where(where_clause)
 					.orderby(gl.name)

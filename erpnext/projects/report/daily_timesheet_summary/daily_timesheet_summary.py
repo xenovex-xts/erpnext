@@ -53,10 +53,20 @@ def get_data(conditions, filters):
 
 def get_conditions(filters):
 	conditions = "`tabTimesheet`.docstatus = 1"
+	# MySQL's timestamp(date, time) constructor does not exist on PostgreSQL, which
+	# concatenates and casts instead. The time can be '24:00:00' (valid in SQL but
+	# not in Python datetime), so branch on the dialect rather than precomputing.
+	is_postgres = frappe.db.db_type == "postgres"
 	if filters.get("from_date"):
-		conditions += " and `tabTimesheet Detail`.from_time >= timestamp(%(from_date)s, %(from_time)s)"
+		if is_postgres:
+			conditions += " and `tabTimesheet Detail`.from_time >= (%(from_date)s || ' ' || %(from_time)s)::timestamp"
+		else:
+			conditions += " and `tabTimesheet Detail`.from_time >= timestamp(%(from_date)s, %(from_time)s)"
 	if filters.get("to_date"):
-		conditions += " and `tabTimesheet Detail`.to_time <= timestamp(%(to_date)s, %(to_time)s)"
+		if is_postgres:
+			conditions += " and `tabTimesheet Detail`.to_time <= (%(to_date)s || ' ' || %(to_time)s)::timestamp"
+		else:
+			conditions += " and `tabTimesheet Detail`.to_time <= timestamp(%(to_date)s, %(to_time)s)"
 
 	match_conditions = build_match_conditions("Timesheet")
 	if match_conditions:

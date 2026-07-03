@@ -510,9 +510,11 @@ def get_internal_invoice_map(invoice_list):
 
 
 def get_invoice_tax_map(invoice_list, invoice_expense_map, expense_accounts, include_payments=False):
+	# MySQL reads double-quoted "Add" as a string, but PostgreSQL reads it as an identifier;
+	# use a searched CASE with single-quoted literal for portability.
 	tax_details = frappe.db.sql(
 		"""
-		select parent, account_head, case add_deduct_tax when "Add" then sum(base_tax_amount_after_discount_amount)
+		select parent, account_head, case when add_deduct_tax = 'Add' then sum(base_tax_amount_after_discount_amount)
 		else sum(base_tax_amount_after_discount_amount) * -1 end as tax_amount
 		from `tabPurchase Taxes and Charges`
 		where parent in (%s) and category in ('Total', 'Valuation and Total')

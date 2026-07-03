@@ -4,10 +4,9 @@
 
 import frappe
 from frappe import _
-from frappe.query_builder import Case, CustomFunction
 from frappe.query_builder.functions import Count, Max, Sum
-from frappe.utils import cint
-
+from frappe.query_builder import Case
+from frappe.utils import date_diff, nowdate
 
 def execute(filters=None):
 	if not filters:
@@ -37,9 +36,6 @@ def get_sales_details(doctype):
 	customer = frappe.qb.DocType("Customer")
 	sales_doctype = frappe.qb.DocType(doctype)
 
-	date_diff = CustomFunction("DATEDIFF", ["d1", "d2"])
-	current_date = CustomFunction("CURRENT_DATE", [])
-
 	if doctype == "Sales Order":
 		total_considered = Sum(
 			Case()
@@ -55,9 +51,11 @@ def get_sales_details(doctype):
 		date_col = sales_doctype.posting_date
 
 	last_order_date = Max(date_col)
-	days_since_last_order = date_diff(current_date(), last_order_date)
 
-	return (
+	# DATEDIFF()/CURRENT_DATE() are MySQL-only; select the aggregated last order
+	# date and compute "days since last order" in Python. Ordering by the last
+	# order date ascending preserves the original "most days since order first".
+	customers = (
 		frappe.qb.from_(customer)
 		.inner_join(sales_doctype)
 		.on(customer.name == sales_doctype.customer)
@@ -70,12 +68,18 @@ def get_sales_details(doctype):
 			Sum(sales_doctype.base_net_total).as_("total_order_value"),
 			total_considered.as_("total_order_considered"),
 			last_order_date.as_("last_order_date"),
-			days_since_last_order.as_("days_since_last_order"),
 		)
 		.where(sales_doctype.docstatus == 1)
 		.groupby(customer.name)
-		.orderby(days_since_last_order, order=frappe.qb.desc)
+		.orderby(last_order_date)
 	).run(as_list=True)
+
+	today = nowdate()
+	for row in customers:
+		# row[7] is last_order_date; append days_since_last_order at index 8.
+		row.append(date_diff(today, row[7]))
+
+	return customers
 
 
 def get_last_sales_amt(customer, doctype):

@@ -11,6 +11,18 @@ from frappe.query_builder.functions import Sum
 from frappe.utils import getdate
 
 
+def datediff_days(end_expr, start_expr):
+	"""Return a portable SQL day-difference between two date expressions.
+
+	MySQL's DATEDIFF(a, b) yields the number of days; PostgreSQL has no DATEDIFF,
+	so we subtract the dates (which yields an integer number of days). The
+	expressions are trusted SQL fragments (column names / bind placeholders).
+	"""
+	if frappe.db.db_type == "postgres":
+		return f"({end_expr}::date - {start_expr}::date)"
+	return f"DATEDIFF({end_expr}, {start_expr})"
+
+
 class VariablePathNotFound(frappe.ValidationError):
 	pass
 
@@ -60,9 +72,9 @@ def get_item_workdays(scorecard):
 	"""Gets the number of days in this period"""
 	supplier = frappe.get_doc("Supplier", scorecard.supplier)
 	total_item_days = frappe.db.sql(
-		"""
+		f"""
 			SELECT
-				SUM(DATEDIFF( %(end_date)s, po_item.schedule_date) * (po_item.qty))
+				SUM({datediff_days('%(end_date)s', 'po_item.schedule_date')} * (po_item.qty))
 			FROM
 				`tabPurchase Order Item` po_item,
 				`tabPurchase Order` po
@@ -149,9 +161,9 @@ def get_total_days_late(scorecard):
 	"""Gets the number of item days late in the period (based on Purchase Receipts vs POs)"""
 	supplier = frappe.get_doc("Supplier", scorecard.supplier)
 	total_delivered_late_days = frappe.db.sql(
-		"""
+		f"""
 			SELECT
-				SUM(DATEDIFF(pr.posting_date,po_item.schedule_date)* pr_item.qty)
+				SUM({datediff_days('pr.posting_date', 'po_item.schedule_date')} * pr_item.qty)
 			FROM
 				`tabPurchase Order Item` po_item,
 				`tabPurchase Receipt Item` pr_item,
@@ -172,9 +184,9 @@ def get_total_days_late(scorecard):
 		total_delivered_late_days = 0
 
 	total_missed_late_days = frappe.db.sql(
-		"""
+		f"""
 			SELECT
-				SUM(DATEDIFF( %(end_date)s, po_item.schedule_date) * (po_item.qty - po_item.received_qty))
+				SUM({datediff_days('%(end_date)s', 'po_item.schedule_date')} * (po_item.qty - po_item.received_qty))
 			FROM
 				`tabPurchase Order Item` po_item,
 				`tabPurchase Order` po
@@ -597,9 +609,9 @@ def get_rfq_response_days(scorecard):
 	"""Gets the total number of days it has taken a supplier to respond to rfqs in the period"""
 	supplier = frappe.get_doc("Supplier", scorecard.supplier)
 	total_sq_days = frappe.db.sql(
-		"""
+		f"""
 			SELECT
-				SUM(DATEDIFF(sq.transaction_date, rfq.transaction_date))
+				SUM({datediff_days('sq.transaction_date', 'rfq.transaction_date')})
 			FROM
 				`tabRequest for Quotation Item` rfq_item,
 				`tabSupplier Quotation Item` sq_item,

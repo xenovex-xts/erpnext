@@ -49,6 +49,9 @@ def get_columns():
 
 
 def get_data():
+	# PG strict GROUP BY: so.name (PK) frees the other so.* columns, but
+	# so_item.item_code is not a primary key, so so_item.item_name and
+	# so_item.description must be listed in GROUP BY too.
 	sales_order_entry = frappe.db.sql(
 		"""
 		SELECT
@@ -67,7 +70,10 @@ def get_data():
 			and so.name = so_item.parent
 			and so.status not in  ('Closed','Completed','Cancelled')
 		GROUP BY
-			so.name,so_item.item_code
+			so.name,
+			so_item.item_code,
+			so_item.item_name,
+			so_item.description
 		""",
 		as_dict=1,
 	)

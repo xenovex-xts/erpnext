@@ -130,8 +130,8 @@ def get_linked_payments_for_doc(
 					ple.account_currency,
 				)
 				.where(Criterion.all(criteria))
-				.groupby(ple.voucher_no, ple.against_voucher_no)
-				.having(qb.Field("allocated_amount") > 0)
+				.groupby(ple.against_voucher_no)
+				.having(Abs(Sum(ple.amount_in_account_currency)) > 0)
 				.run(as_dict=True)
 			)
 			return res
@@ -156,7 +156,17 @@ def get_linked_payments_for_doc(
 					ple.account_currency,
 				)
 				.where(Criterion.all(criteria))
-				.groupby(ple.against_voucher_no)
+				# PG strict GROUP BY: ple.name is not selected/grouped, so every
+				# selected non-aggregated ple column must be listed.
+				.groupby(
+					ple.company,
+					ple.account,
+					ple.party_type,
+					ple.party,
+					ple.against_voucher_type,
+					ple.against_voucher_no,
+					ple.account_currency,
+				)
 			)
 
 			res = query.run(as_dict=True)
@@ -187,8 +197,15 @@ def get_linked_advances(company, docname):
 			adv.currency,
 		)
 		.where(Criterion.all(criteria))
-		.having(qb.Field("allocated_amount") > 0)
-		.groupby(adv.against_voucher_no)
+		# PG strict GROUP BY: group the selected non-aggregated adv columns, and
+		# repeat the aggregate in HAVING (a SELECT alias is not visible there).
+		.groupby(
+			adv.company,
+			adv.against_voucher_type,
+			adv.against_voucher_no,
+			adv.currency,
+		)
+		.having(Abs(Sum(adv.amount)) > 0)
 		.run(as_dict=True)
 	)
 

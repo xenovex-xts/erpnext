@@ -547,10 +547,15 @@ def get_accounting_entries(
 	ignore_is_opening = frappe.get_single_value("Accounts Settings", "ignore_is_opening_check_for_reporting")
 
 	if doctype == "GL Entry":
-		query = query.select(gl_entry.posting_date, gl_entry.is_opening, gl_entry.fiscal_year)
+		# These non-aggregated columns can only be selected when not grouping by
+		# account, otherwise they violate PG strict GROUP BY.
+		if not group_by_account:
+			query = query.select(gl_entry.posting_date, gl_entry.is_opening, gl_entry.fiscal_year)
 		query = query.where(gl_entry.is_cancelled == 0)
 		query = query.where(gl_entry.posting_date <= to_date)
-		query = query.force_index("posting_date_company_index")
+		# FORCE INDEX is MySQL-only; PostgreSQL has no equivalent.
+		if frappe.db.db_type != "postgres":
+			query = query.force_index("posting_date_company_index")
 
 		if ignore_opening_entries and not ignore_is_opening:
 			query = query.where(gl_entry.is_opening == "No")
@@ -565,7 +570,9 @@ def get_accounting_entries(
 		query = query.where(ExistsCriterion(account_filter_query))
 
 	if group_by_account:
-		query = query.groupby("account")
+		# account_currency is selected but not aggregated and account is not a
+		# primary key, so PG strict GROUP BY needs it listed too.
+		query = query.groupby(gl_entry.account, gl_entry.account_currency)
 
 	from frappe.desk.reportview import build_match_conditions
 

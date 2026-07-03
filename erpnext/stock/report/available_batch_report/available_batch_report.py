@@ -5,7 +5,7 @@ from collections import defaultdict
 
 import frappe
 from frappe import _
-from frappe.query_builder.functions import Sum
+from frappe.query_builder.functions import Max, Sum
 from frappe.utils import flt, get_datetime, today
 
 
@@ -107,7 +107,9 @@ def get_batchwise_data_from_stock_ledger(filters):
 			Sum(table.actual_qty).as_("balance_qty"),
 		)
 		.where(table.is_cancelled == 0)
-		.groupby(table.batch_no, table.item_code, table.warehouse)
+		# batch.expiry_date is a foreign (Batch) column selected but not aggregated,
+		# so add it for PG strict GROUP BY.
+		.groupby(table.batch_no, table.item_code, table.warehouse, batch.expiry_date)
 	)
 
 	query = get_query_based_on_filters(query, batch, table, filters)
@@ -138,7 +140,9 @@ def get_batchwise_data_from_serial_batch_bundle(batchwise_data, filters):
 			Sum(ch_table.qty).as_("balance_qty"),
 		)
 		.where((table.is_cancelled == 0) & (table.docstatus == 1))
-		.groupby(ch_table.batch_no, table.item_code, ch_table.warehouse)
+		# table.warehouse and batch.expiry_date are selected but not aggregated;
+		# add them for PG strict GROUP BY (group by the selected warehouse column).
+		.groupby(ch_table.batch_no, table.item_code, table.warehouse, batch.expiry_date)
 	)
 
 	query = get_query_based_on_filters(query, batch, table, filters)
@@ -186,6 +190,8 @@ def get_query_based_on_filters(query, batch, table, filters):
 		query = query.where(table.warehouse.isin(warehouses))
 
 	if filters.show_item_name:
-		query = query.select(batch.item_name)
+		# The outer query groups, so this foreign (Batch) column must be aggregated
+		# to satisfy PG strict GROUP BY.
+		query = query.select(Max(batch.item_name).as_("item_name"))
 
 	return query

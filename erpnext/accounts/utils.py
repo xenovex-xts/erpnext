@@ -1227,8 +1227,10 @@ def get_held_invoices(party_type, party):
 	held_invoices = None
 
 	if party_type == "Supplier":
+		# CURDATE() is MySQL-only; bind today's date as a parameter instead.
 		held_invoices = frappe.db.sql(
-			"select name from `tabPurchase Invoice` where on_hold = 1 and release_date IS NOT NULL and release_date > CURDATE()",
+			"select name from `tabPurchase Invoice` where on_hold = 1 and release_date IS NOT NULL and release_date > %s",
+			(nowdate(),),
 			as_dict=1,
 		)
 		held_invoices = set(d["name"] for d in held_invoices)
@@ -2216,7 +2218,8 @@ def delink_original_entry(pl_entry, partial_cancel=False):
 			qb.update(ple)
 			.set(ple.modified, now())
 			.set(ple.modified_by, frappe.session.user)
-			.set(ple.delinked, True)
+			# delinked is a Check (integer) column; set 1, not a Python bool.
+			.set(ple.delinked, 1)
 			.where(
 				(ple.company == pl_entry.company)
 				& (ple.account_type == pl_entry.account_type)
@@ -2332,7 +2335,8 @@ class QueryPaymentLedger:
 				.where(Criterion.all(self.voucher_posting_date))
 				.groupby(ple.against_voucher_type, ple.against_voucher_no, ple.party_type, ple.party)
 				.orderby(ple.invoice_date, ple.voucher_no)
-				.having(qb.Field("amount_in_account_currency") > 0)
+				# PG cannot reference a SELECT alias in HAVING; repeat the aggregate.
+				.having(Sum(ple.amount_in_account_currency) > 0)
 				.limit(self.limit)
 				.run()
 			)
@@ -2346,18 +2350,20 @@ class QueryPaymentLedger:
 		query_voucher_amount = (
 			qb.from_(ple)
 			.select(
-				ple.account,
+				# Group by voucher (voucher_type, voucher_no, party_type, party); MAX()-wrap
+				# the remaining non-aggregated columns for PG strict GROUP BY.
+				Max(ple.account).as_("account"),
 				ple.voucher_type,
 				ple.voucher_no,
 				ple.party_type,
 				ple.party,
-				ple.posting_date,
-				ple.due_date,
-				ple.account_currency.as_("currency"),
-				ple.cost_center.as_("cost_center"),
+				Max(ple.posting_date).as_("posting_date"),
+				Max(ple.due_date).as_("due_date"),
+				Max(ple.account_currency).as_("currency"),
+				Max(ple.cost_center).as_("cost_center"),
 				Sum(ple.amount).as_("amount"),
 				Sum(ple.amount_in_account_currency).as_("amount_in_account_currency"),
-				ple.remarks,
+				Max(ple.remarks).as_("remarks"),
 			)
 			.where(ple.delinked == 0)
 			.where(Criterion.all(filter_on_voucher_no))
@@ -2371,14 +2377,16 @@ class QueryPaymentLedger:
 		query_voucher_outstanding = (
 			qb.from_(ple)
 			.select(
-				ple.account,
+				# Group by against-voucher; MAX()-wrap the remaining non-aggregated
+				# columns for PG strict GROUP BY.
+				Max(ple.account).as_("account"),
 				ple.against_voucher_type.as_("voucher_type"),
 				ple.against_voucher_no.as_("voucher_no"),
 				ple.party_type,
 				ple.party,
-				ple.posting_date,
-				ple.due_date,
-				ple.account_currency.as_("currency"),
+				Max(ple.posting_date).as_("posting_date"),
+				Max(ple.due_date).as_("due_date"),
+				Max(ple.account_currency).as_("currency"),
 				Sum(ple.amount).as_("amount"),
 				Sum(ple.amount_in_account_currency).as_("amount_in_account_currency"),
 			)
@@ -2427,17 +2435,20 @@ class QueryPaymentLedger:
 
 		# build CTE filter
 		# only fetch invoices
+		# PG cannot reference a SELECT alias (outstanding_in_account_currency) in
+		# HAVING; filter on the source CTE column with WHERE instead (equivalent, as
+		# the outer CTE query does no aggregation).
 		if self.get_invoices:
 			self.cte_query_voucher_amount_and_outstanding = (
-				self.cte_query_voucher_amount_and_outstanding.having(
-					qb.Field("outstanding_in_account_currency") > 0
+				self.cte_query_voucher_amount_and_outstanding.where(
+					Table("outstanding").amount_in_account_currency > 0
 				)
 			)
 		# only fetch payments
 		elif self.get_payments:
 			self.cte_query_voucher_amount_and_outstanding = (
-				self.cte_query_voucher_amount_and_outstanding.having(
-					qb.Field("outstanding_in_account_currency") < 0
+				self.cte_query_voucher_amount_and_outstanding.where(
+					Table("outstanding").amount_in_account_currency < 0
 				)
 			)
 

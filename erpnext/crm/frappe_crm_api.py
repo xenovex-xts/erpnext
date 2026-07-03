@@ -1,6 +1,5 @@
 import json
 
-import click
 import frappe
 from frappe import _
 

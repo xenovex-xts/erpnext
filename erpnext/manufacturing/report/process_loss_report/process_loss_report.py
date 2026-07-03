@@ -45,7 +45,10 @@ def get_data(filters: Filters) -> Data:
 			& (se.purpose == "Manufacture")
 			& (se.posting_date.between(filters.from_date, filters.to_date))
 		)
-		.groupby(se.work_order)
+		# All non-aggregated selected columns belong to Work Order (wo); grouping
+		# by its primary key frees them all under PG strict GROUP BY. (Grouping by
+		# se.work_order does not, since it is not wo's primary key.)
+		.groupby(wo.name)
 	)
 
 	if "item" in filters:

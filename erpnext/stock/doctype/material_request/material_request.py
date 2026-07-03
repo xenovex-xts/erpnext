@@ -13,7 +13,7 @@ from frappe import _, msgprint
 from frappe.model.mapper import get_mapped_doc
 from frappe.query_builder import Order
 from frappe.query_builder.functions import Sum
-from frappe.utils import cint, cstr, flt, get_link_to_form, getdate, new_line_sep, nowdate
+from frappe.utils import cint, cstr, flt, get_datetime, get_link_to_form, getdate, new_line_sep, nowdate
 
 from erpnext.buying.utils import check_on_hold_or_closed_status, validate_for_items
 from erpnext.controllers.buying_controller import BuyingController
@@ -248,11 +248,21 @@ class MaterialRequest(BuyingController):
 		self.set_status(update=True, status="Cancelled")
 
 	def check_modified_date(self):
-		mod_db = frappe.db.sql("""select modified from `tabMaterial Request` where name = %s""", self.name)
-		date_diff = frappe.db.sql("""select TIMEDIFF(%s, %s)""", (mod_db[0][0], cstr(self.modified)))
+		mod_db = frappe.db.sql(
+			"""select modified from `tabMaterial Request` where name = %s""",
+			self.name,
+		)
 
-		if date_diff and date_diff[0][0]:
-			frappe.throw(_("{0} {1} has been modified. Please refresh.").format(_(self.doctype), self.name))
+		# TIMEDIFF is MySQL-only; compute the difference in Python instead.
+		date_diff = (get_datetime(mod_db[0][0]) - get_datetime(self.modified)).total_seconds()
+
+		if date_diff:
+			frappe.throw(
+				_("{0} {1} has been modified. Please refresh.").format(
+					_(self.doctype),
+					self.name,
+				)
+			)
 
 	def update_status(self, status):
 		self.check_modified_date()

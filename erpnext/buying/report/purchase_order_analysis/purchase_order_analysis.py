@@ -71,7 +71,10 @@ def get_data(filters):
 			po_item.name,
 		)
 		.where((po_item.parent == po.name) & (po.status.notin(("Stopped", "On Hold"))) & (po.docstatus == 1))
-		.groupby(po_item.name)
+		# Group by the primary keys of both tables: po_item.name frees every
+		# selected po_item.* column and po.name frees every po.* column under PG
+		# strict GROUP BY (functional dependency on the primary key).
+		.groupby(po_item.name, po.name)
 		.orderby(po.transaction_date)
 	)
 

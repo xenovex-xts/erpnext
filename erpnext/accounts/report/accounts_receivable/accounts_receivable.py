@@ -10,6 +10,7 @@ from frappe.database.schema import get_definition
 from frappe.query_builder import Criterion
 from frappe.query_builder.functions import Date, Substring, Sum
 from frappe.utils import cint, cstr, flt, getdate, nowdate
+from pypika.terms import Case
 
 from erpnext.accounts.doctype.accounting_dimension.accounting_dimension import (
 	get_accounting_dimensions,
@@ -664,7 +665,6 @@ class ReceivablePayableReport:
 	def get_future_payments_from_payment_entry(self):
 		pe = frappe.qb.DocType("Payment Entry")
 		pe_ref = frappe.qb.DocType("Payment Entry Reference")
-		ifelse = query_builder.CustomFunction("IF", ["condition", "then", "else"])
 
 		return (
 			frappe.qb.from_(pe)
@@ -677,11 +677,14 @@ class ReceivablePayableReport:
 				(pe.posting_date).as_("future_date"),
 				(pe_ref.allocated_amount).as_("future_amount"),
 				(pe.reference_no).as_("future_ref"),
-				ifelse(
+				# MySQL IF() errors on PostgreSQL; CASE is portable.
+				Case()
+				.when(
 					pe.payment_type == "Receive",
 					pe.source_exchange_rate * pe_ref.allocated_amount,
-					pe.target_exchange_rate * pe_ref.allocated_amount,
-				).as_("future_amount_in_base_currency"),
+				)
+				.else_(pe.target_exchange_rate * pe_ref.allocated_amount)
+				.as_("future_amount_in_base_currency"),
 			)
 			.where(
 				(pe.docstatus < 2)
@@ -711,19 +714,32 @@ class ReceivablePayableReport:
 				& (jea.reference_name.isnotnull())
 				& (jea.reference_name != "")
 			)
+			# PG strict GROUP BY: group every selected non-aggregated column
+			# (spanning Journal Entry and Journal Entry Account, neither PK grouped).
+			.groupby(
+				jea.reference_name,
+				jea.party,
+				jea.party_type,
+				je.posting_date,
+				je.cheque_no,
+			)
 		)
 
+		# PG cannot reference the SELECT alias "future_amount" in HAVING, so repeat
+		# the matching aggregate expression per branch.
 		if self.filters.get("party"):
 			if self.account_type == "Payable":
 				query = query.select(
 					Sum(jea.debit_in_account_currency - jea.credit_in_account_currency).as_("future_amount")
 				)
 				query = query.select(Sum(jea.debit - jea.credit).as_("future_amount_in_base_currency"))
+				query = query.having(Sum(jea.debit_in_account_currency - jea.credit_in_account_currency) > 0)
 			else:
 				query = query.select(
 					Sum(jea.credit_in_account_currency - jea.debit_in_account_currency).as_("future_amount")
 				)
 				query = query.select(Sum(jea.credit - jea.debit).as_("future_amount_in_base_currency"))
+				query = query.having(Sum(jea.credit_in_account_currency - jea.debit_in_account_currency) > 0)
 		else:
 			query = query.select(
 				Sum(jea.debit if self.account_type == "Payable" else jea.credit).as_(
@@ -737,8 +753,15 @@ class ReceivablePayableReport:
 					else jea.credit_in_account_currency
 				).as_("future_amount")
 			)
+			query = query.having(
+				Sum(
+					jea.debit_in_account_currency
+					if self.account_type == "Payable"
+					else jea.credit_in_account_currency
+				)
+				> 0
+			)
 
-		query = query.having(qb.Field("future_amount") > 0)
 		return query.run(as_dict=True)
 
 	def allocate_future_payments(self, row):

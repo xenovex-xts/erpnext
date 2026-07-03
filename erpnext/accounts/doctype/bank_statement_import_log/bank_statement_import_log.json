@@ -54,6 +54,7 @@
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Closing Balance",
+   "non_negative": 1,
    "options": "currency"
   },
   {

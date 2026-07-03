@@ -305,7 +305,9 @@ def get_po_entries(filters):
 			& (parent.name == child.parent)
 			& (parent.status.notin(("Closed", "Completed", "Cancelled")))
 		)
-		.groupby(parent.name, child.material_request_item)
+		# No GROUP BY: the query selects only non-aggregated columns, and the
+		# parent/child inner join already yields one row per PO line, so the
+		# original grouping was a no-op that also broke PG strict GROUP BY.
 	)
 	query = apply_filters_on_query(filters, parent, child, query)
 

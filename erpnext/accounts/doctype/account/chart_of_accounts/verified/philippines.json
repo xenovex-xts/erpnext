@@ -418,7 +418,8 @@
 				"Customer Deposits": {
 					"account_number": "2500",
 					"is_group": 0,
-					"root_type": "Liability"
+					"root_type": "Liability",
+					"account_type": "Payable"
 				}
 			},
 			"Non Current Liabilities": {
