@@ -24,7 +24,7 @@ from erpnext.accounts.doctype.budget.budget import validate_expense_against_budg
 from erpnext.accounts.utils import create_payment_ledger_entry, is_immutable_ledger_enabled
 from erpnext.controllers.budget_controller import BudgetValidation
 from erpnext.exceptions import InvalidAccountDimensionError, MandatoryAccountDimensionError
-
+from frappe.query_builder.functions import Max
 
 def make_gl_entries(
 	gl_map,
@@ -837,20 +837,45 @@ def validate_opening_entry_against_pcv(company):
 		)
 
 
+# def validate_against_pcv(is_opening, posting_date, company):
+# 	if is_opening:
+# 		validate_opening_entry_against_pcv(company)
+
+# 	last_pcv_date = frappe.db.get_value(
+# 		"Period Closing Voucher", {"docstatus": 1, "company": company}, [{"MAX": "period_end_date"}]
+# 	)
+
+# 	if last_pcv_date and getdate(posting_date) <= getdate(last_pcv_date):
+# 		message = _("Books have been closed till the period ending on {0}").format(formatdate(last_pcv_date))
+# 		message += "</br >"
+# 		message += _("You cannot create/amend any accounting entries till this date.")
+# 		frappe.throw(message, title=_("Period Closed"))
+
 def validate_against_pcv(is_opening, posting_date, company):
-	if is_opening:
-		validate_opening_entry_against_pcv(company)
-
-	last_pcv_date = frappe.db.get_value(
-		"Period Closing Voucher", {"docstatus": 1, "company": company}, [{"MAX": "period_end_date"}]
-	)
-
-	if last_pcv_date and getdate(posting_date) <= getdate(last_pcv_date):
-		message = _("Books have been closed till the period ending on {0}").format(formatdate(last_pcv_date))
-		message += "</br >"
-		message += _("You cannot create/amend any accounting entries till this date.")
-		frappe.throw(message, title=_("Period Closed"))
-
+    if is_opening:
+        validate_opening_entry_against_pcv(company)
+ 
+    pcv = frappe.qb.DocType("Period Closing Voucher")
+ 
+    last_pcv_date = (
+        frappe.qb.from_(pcv)
+        .select(Max(pcv.period_end_date))
+        .where(
+            (pcv.docstatus == 1)
+            & (pcv.company == company)
+        )
+        .run(pluck=True)[0]
+    )
+ 
+    if last_pcv_date and getdate(posting_date) <= getdate(last_pcv_date):
+        message = _("Books have been closed till the period ending on {0}").format(
+            formatdate(last_pcv_date)
+        )
+        message += "</br>"
+        message += _("You cannot create/amend any accounting entries till this date.")
+        frappe.throw(message, title=_("Period Closed"))
+ 
+ 
 
 def set_as_cancel(voucher_type, voucher_no):
 	"""
