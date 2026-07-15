@@ -711,6 +711,59 @@ def get_income_account(doctype, txt, searchfield, start, page_len, filters):
 	)
 
 
+# @frappe.whitelist()
+# @frappe.validate_and_sanitize_search_inputs
+# def get_filtered_dimensions(doctype, txt, searchfield, start, page_len, filters, reference_doctype=None):
+# 	from erpnext.accounts.doctype.accounting_dimension_filter.accounting_dimension_filter import (
+# 		get_dimension_filter_map,
+# 	)
+
+# 	dimension_filters = get_dimension_filter_map()
+# 	dimension_filters = dimension_filters.get((filters.get("dimension"), filters.get("account")))
+# 	query_filters = []
+# 	or_filters = []
+# 	fields = ["name"]
+
+# 	searchfields = frappe.get_meta(doctype).get_search_fields()
+
+# 	meta = frappe.get_meta(doctype)
+# 	if meta.is_tree and meta.has_field("is_group"):
+# 		query_filters.append(["is_group", "=", 0])
+
+# 	if meta.has_field("disabled"):
+# 		query_filters.append(["disabled", "!=", 1])
+
+# 	if meta.has_field("company"):
+# 		query_filters.append(["company", "=", filters.get("company")])
+
+# 	for field in searchfields:
+# 		or_filters.append([field, "LIKE", "%%%s%%" % txt])
+# 		fields.append(field)
+
+# 	if dimension_filters:
+# 		if dimension_filters["allow_or_restrict"] == "Allow":
+# 			query_selector = "in"
+# 		else:
+# 			query_selector = "not in"
+
+# 		if len(dimension_filters["allowed_dimensions"]) == 1:
+# 			dimensions = tuple(dimension_filters["allowed_dimensions"] * 2)
+# 		else:
+# 			dimensions = tuple(dimension_filters["allowed_dimensions"])
+
+# 		query_filters.append(["name", query_selector, dimensions])
+
+# 	output = frappe.get_list(
+# 		doctype,
+# 		fields=fields,
+# 		filters=query_filters,
+# 		or_filters=or_filters,
+# 		as_list=1,
+# 		reference_doctype=reference_doctype,
+# 	)
+
+# 	return [tuple(d) for d in set(output)]
+
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
 def get_filtered_dimensions(doctype, txt, searchfield, start, page_len, filters, reference_doctype=None):
@@ -736,9 +789,24 @@ def get_filtered_dimensions(doctype, txt, searchfield, start, page_len, filters,
 	if meta.has_field("company"):
 		query_filters.append(["company", "=", filters.get("company")])
 
+	# PostgreSQL fix: ILIKE / LIKE cannot be applied to non-text columns
+	# (e.g. is_group is smallint — applying LIKE on it throws:
+	#  "operator does not exist: smallint ~~* unknown")
+	# Only apply LIKE filter on text-compatible fieldtypes.
+	TEXT_FIELDTYPES = {
+		"Data", "Text", "Small Text", "Long Text",
+		"Text Editor", "Link", "Dynamic Link",
+		"Read Only", "Select", "Code", "HTML",
+		"Password", "Autocomplete",
+	}
 	for field in searchfields:
-		or_filters.append([field, "LIKE", "%%%s%%" % txt])
+		field_meta = meta.get_field(field)
+		# Always fetch the field value for display
 		fields.append(field)
+		# Skip LIKE filter for non-text fields (Int, Check, smallint, Float, etc.)
+		if field_meta and field_meta.fieldtype not in TEXT_FIELDTYPES:
+			continue
+		or_filters.append([field, "LIKE", "%%%s%%" % txt])
 
 	if dimension_filters:
 		if dimension_filters["allow_or_restrict"] == "Allow":
@@ -763,7 +831,6 @@ def get_filtered_dimensions(doctype, txt, searchfield, start, page_len, filters,
 	)
 
 	return [tuple(d) for d in set(output)]
-
 
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
