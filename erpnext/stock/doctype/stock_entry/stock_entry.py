@@ -3127,12 +3127,17 @@ class StockEntry(StockController, SubcontractingInwardController):
 
 		precision = self.precision("process_loss_qty")
 		if self.work_order:
+			# data = frappe.get_all(
+			# 	"Work Order Operation",
+			# 	filters={"parent": self.work_order},
+			# 	fields=[{"MAX": "process_loss_qty", "as": "process_loss_qty"}],
+			# )
 			data = frappe.get_all(
 				"Work Order Operation",
 				filters={"parent": self.work_order},
 				fields=[{"MAX": "process_loss_qty", "as": "process_loss_qty"}],
+				order_by=None,
 			)
-
 			if data and data[0].process_loss_qty:
 				process_loss_qty = data[0].process_loss_qty
 				if flt(self.process_loss_qty, precision) != flt(process_loss_qty, precision):
