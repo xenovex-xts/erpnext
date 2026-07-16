@@ -1441,6 +1441,27 @@ def get_bom_items_as_dict(
 			bom_item.name,
 			bom_item.is_legacy
 		"""
+	if cint(fetch_exploded):
+		# BOM Explosion Item lacks uom, conversion_factor, operation_row_id, bom_no columns present on BOM Item
+		group_by_cond = """group by
+			bom_item.item_code,
+			bom_item.idx,
+			item.item_name,
+			item.image,
+			bom.project,
+			item.stock_uom,
+			item.item_group,
+			item.allow_alternative_item,
+			item_default.default_warehouse,
+			item_default.expense_account,
+			item_default.buying_cost_center,
+			bom_item.rate,
+			bom_item.source_warehouse,
+			bom_item.operation,
+			bom_item.include_item_in_manufacturing,
+			bom_item.sourced_by_supplier,
+			bom_item.description
+		"""	
 
 	# Did not use qty_consumed_per_unit in the query, as it leads to rounding loss
 	query = """select
@@ -1469,8 +1490,9 @@ def get_bom_items_as_dict(
 				and (item.is_stock_item in (1, {is_stock_item})
 				{where_conditions}
 				{group_by_cond}
-				order by idx"""
-
+				order by bom_item.idx"""
+				# order by idx"""
+				
 	is_stock_item = cint(not include_non_stock_items)
 	if cint(fetch_exploded):
 		query = query.format(

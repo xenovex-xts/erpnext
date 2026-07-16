@@ -12,6 +12,7 @@ from frappe.query_builder.functions import Sum
 from frappe.utils import cint, flt, nowdate, nowtime, parse_json
 
 from erpnext.stock.utils import get_or_make_bin, get_stock_balance
+from frappe.query_builder.functions import Min
 
 
 class StockReservationEntry(Document):
@@ -864,14 +865,15 @@ def get_sre_reserved_warehouses_for_voucher(
 	query = (
 		frappe.qb.from_(sre)
 		.select(sre.warehouse)
-		.distinct()
+		# .distinct()
 		.where(
 			(sre.docstatus == 1)
 			& (sre.voucher_type == voucher_type)
 			& (sre.voucher_no == voucher_no)
 			& (sre.delivered_qty < sre.reserved_qty)
 		)
-		.orderby(sre.creation)
+		.groupby(sre.warehouse)
+		.orderby(Min(sre.creation))
 	)
 
 	if voucher_detail_no:
