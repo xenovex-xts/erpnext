@@ -82,7 +82,7 @@ def get_asset_categories_for_grouped_by_category(filters):
 	asset_capitalization = frappe.qb.DocType("Asset Capitalization")
 
 	disposal_in_period = (
-		(IfNull(asset.disposal_date, 0) != 0)
+		((asset.disposal_date.isnotnull()))
 		& (asset.disposal_date >= filters.from_date)
 		& (asset.disposal_date <= filters.to_date)
 	)
@@ -92,7 +92,7 @@ def get_asset_categories_for_grouped_by_category(filters):
 			frappe.qb.terms.Case()
 			.when(
 				(asset.purchase_date < filters.from_date)
-				& ((IfNull(asset.disposal_date, 0) == 0) | (asset.disposal_date >= filters.from_date)),
+				& (((asset.disposal_date.isnull())) | (asset.disposal_date >= filters.from_date)),
 				asset.net_purchase_amount,
 			)
 			.else_(0)
@@ -210,7 +210,7 @@ def get_assets_for_grouped_by_category(filters):
 					.when(
 						(gl_entry.posting_date < filters.from_date)
 						& (
-							(IfNull(asset.disposal_date, 0) == 0) | (asset.disposal_date >= filters.from_date)
+							((asset.disposal_date.isnull())) | (asset.disposal_date >= filters.from_date)
 						),
 						gl_entry.debit,
 					)
@@ -222,7 +222,7 @@ def get_assets_for_grouped_by_category(filters):
 				Sum(
 					frappe.qb.terms.Case()
 					.when(
-						(gl_entry.posting_date <= filters.to_date) & (IfNull(asset.disposal_date, 0) == 0),
+						(gl_entry.posting_date <= filters.to_date) & ((asset.disposal_date.isnull())),
 						gl_entry.credit,
 					)
 					.else_(0)
@@ -233,7 +233,7 @@ def get_assets_for_grouped_by_category(filters):
 				Sum(
 					frappe.qb.terms.Case()
 					.when(
-						(IfNull(asset.disposal_date, 0) != 0)
+						((asset.disposal_date.isnotnull()))
 						& (asset.disposal_date >= filters.from_date)
 						& (asset.disposal_date <= filters.to_date)
 						& (gl_entry.posting_date <= asset.disposal_date),
@@ -250,7 +250,7 @@ def get_assets_for_grouped_by_category(filters):
 						(gl_entry.posting_date >= filters.from_date)
 						& (gl_entry.posting_date <= filters.to_date)
 						& (
-							(IfNull(asset.disposal_date, 0) == 0)
+							((asset.disposal_date.isnull()))
 							| (gl_entry.posting_date <= asset.disposal_date)
 						),
 						gl_entry.debit,
@@ -282,7 +282,7 @@ def get_assets_for_grouped_by_category(filters):
 				Sum(
 					frappe.qb.terms.Case()
 					.when(
-						(IfNull(asset.disposal_date, 0) != 0) & (asset.disposal_date < filters.from_date),
+						((asset.disposal_date.isnotnull())) & (asset.disposal_date < filters.from_date),
 						0,
 					)
 					.else_(asset.opening_accumulated_depreciation)
@@ -476,7 +476,7 @@ def get_asset_details_for_grouped_by_category(filters):
 	asset_capitalization = frappe.qb.DocType("Asset Capitalization")
 
 	disposal_in_period = (
-		(IfNull(asset.disposal_date, 0) != 0)
+		((asset.disposal_date.isnotnull()))
 		& (asset.disposal_date >= filters.from_date)
 		& (asset.disposal_date <= filters.to_date)
 	)
@@ -501,7 +501,7 @@ def get_asset_details_for_grouped_by_category(filters):
 					.when(
 						(asset.purchase_date < filters.from_date)
 						& (
-							(IfNull(asset.disposal_date, 0) == 0) | (asset.disposal_date >= filters.from_date)
+							((asset.disposal_date.isnull())) | (asset.disposal_date >= filters.from_date)
 						),
 						asset.net_purchase_amount,
 					)
@@ -600,7 +600,7 @@ def get_assets_for_grouped_by_asset(filters):
 					.when(
 						(gl_entry.posting_date < filters.from_date)
 						& (
-							(IfNull(asset.disposal_date, 0) == 0) | (asset.disposal_date >= filters.from_date)
+							((asset.disposal_date.isnull())) | (asset.disposal_date >= filters.from_date)
 						),
 						gl_entry.debit,
 					)
@@ -612,7 +612,7 @@ def get_assets_for_grouped_by_asset(filters):
 				Sum(
 					frappe.qb.terms.Case()
 					.when(
-						(gl_entry.posting_date <= filters.to_date) & (IfNull(asset.disposal_date, 0) == 0),
+						(gl_entry.posting_date <= filters.to_date) & ((asset.disposal_date.isnull())),
 						gl_entry.credit,
 					)
 					.else_(0)
@@ -623,7 +623,7 @@ def get_assets_for_grouped_by_asset(filters):
 				Sum(
 					frappe.qb.terms.Case()
 					.when(
-						(IfNull(asset.disposal_date, 0) != 0)
+						((asset.disposal_date.isnotnull()))
 						& (asset.disposal_date >= filters.from_date)
 						& (asset.disposal_date <= filters.to_date)
 						& (gl_entry.posting_date <= asset.disposal_date),
@@ -640,7 +640,7 @@ def get_assets_for_grouped_by_asset(filters):
 						(gl_entry.posting_date >= filters.from_date)
 						& (gl_entry.posting_date <= filters.to_date)
 						& (
-							(IfNull(asset.disposal_date, 0) == 0)
+							((asset.disposal_date.isnull()))
 							| (gl_entry.posting_date <= asset.disposal_date)
 						),
 						gl_entry.debit,
@@ -672,7 +672,7 @@ def get_assets_for_grouped_by_asset(filters):
 				Sum(
 					frappe.qb.terms.Case()
 					.when(
-						(IfNull(asset.disposal_date, 0) != 0) & (asset.disposal_date < filters.from_date),
+						((asset.disposal_date.isnotnull())) & (asset.disposal_date < filters.from_date),
 						0,
 					)
 					.else_(asset.opening_accumulated_depreciation)

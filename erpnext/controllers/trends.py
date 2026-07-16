@@ -37,6 +37,7 @@ def get_columns(filters, trans):
 		"period_wise_select": period_select,
 		"columns": columns,
 		"group_by": based_on_details["based_on_group_by"],
+		"group_by_first_col": based_on_details["based_on_group_by_first_col"],
 		"grbc": group_by_cols,
 		"trans": trans,
 		"addl_tables": based_on_details["addl_tables"],

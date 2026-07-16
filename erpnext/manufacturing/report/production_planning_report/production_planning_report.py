@@ -222,6 +222,31 @@ class ProductionPlanReport:
 			if key not in self.bin_details:
 				self.bin_details.setdefault(key, d)
 
+	# def get_purchase_details(self):
+	# 	if not (self.orders and self.raw_materials_dict):
+	# 		return
+
+	# 	self.purchase_details = {}
+
+	# 	purchased_items = frappe.get_all(
+	# 		"Purchase Order Item",
+	# 		fields=[
+	# 			"item_code",
+	# 			{"MIN": "schedule_date", "as": "arrival_date"},
+	# 			"qty as arrival_qty",
+	# 			"warehouse",
+	# 		],
+	# 		filters={
+	# 			"item_code": ("in", self.item_codes),
+	# 			"warehouse": ("in", self.warehouses),
+	# 			"docstatus": 1,
+	# 		},
+	# 		group_by="item_code, warehouse",
+	# 	)
+	# 	for d in purchased_items:
+	# 		key = (d.item_code, d.warehouse)
+	# 		if key not in self.purchase_details:
+	# 			self.purchase_details.setdefault(key, d)
 	def get_purchase_details(self):
 		if not (self.orders and self.raw_materials_dict):
 			return
@@ -233,7 +258,7 @@ class ProductionPlanReport:
 			fields=[
 				"item_code",
 				{"MIN": "schedule_date", "as": "arrival_date"},
-				"qty as arrival_qty",
+				{"SUM": "qty", "as": "arrival_qty"},
 				"warehouse",
 			],
 			filters={
@@ -246,7 +271,7 @@ class ProductionPlanReport:
 		for d in purchased_items:
 			key = (d.item_code, d.warehouse)
 			if key not in self.purchase_details:
-				self.purchase_details.setdefault(key, d)
+				self.purchase_details[key] = d
 
 	def prepare_data(self):
 		if not self.orders:

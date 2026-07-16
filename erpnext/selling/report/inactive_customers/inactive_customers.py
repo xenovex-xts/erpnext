@@ -6,7 +6,7 @@ import frappe
 from frappe import _
 from frappe.query_builder.functions import Count, Max, Sum
 from frappe.query_builder import Case
-from frappe.utils import date_diff, nowdate
+from frappe.utils import date_diff, nowdate , cint
 
 def execute(filters=None):
 	if not filters:

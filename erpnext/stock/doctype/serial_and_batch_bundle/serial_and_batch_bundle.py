@@ -3134,7 +3134,7 @@ def get_available_batches(kwargs):
 		.where(stock_ledger_entry.is_cancelled == 0)
 		# batch_table.expiry_date is a foreign (Batch) column selected but not
 		# aggregated, so add it for PG strict GROUP BY.
-		.groupby(batch_ledger.batch_no, batch_ledger.warehouse, batch_table.expiry_date)
+		.groupby(batch_ledger.batch_no, batch_ledger.warehouse, batch_table.expiry_date, batch_table.creation)
 	)
 
 	if kwargs.get("company"):
@@ -3471,6 +3471,7 @@ def get_stock_ledgers_batches(kwargs):
 			stock_ledger_entry.warehouse,
 			stock_ledger_entry.item_code,
 			batch_table.expiry_date,
+			batch_table.creation,
 		)
 	)
 

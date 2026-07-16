@@ -85,7 +85,8 @@ def get_data(filters):
 			Opportunity.party_name,
 			Opportunity.customer_name,
 			Opportunity.opportunity_type,
-			GROUP_CONCAT(OpportunityLostReasonDetail.lost_reason, alias="lost_reason").separator(", "),
+			# GROUP_CONCAT(OpportunityLostReasonDetail.lost_reason, alias="lost_reason").separator(", "),
+			GROUP_CONCAT(OpportunityLostReasonDetail.lost_reason,alias="lost_reason",).separator(", "),
 			Opportunity.sales_stage,
 			Opportunity.territory,
 		)

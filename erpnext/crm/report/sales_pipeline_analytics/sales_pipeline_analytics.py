@@ -88,9 +88,16 @@ class SalesPipelineAnalytics:
 		if self.filters.get("range") == "Monthly":
 			self.group_by_period = Month(opp.expected_closing)
 			self.duration = MonthName(opp.expected_closing).as_("month")
+			# PostgreSQL GROUP BY fix: expression without alias for use in groupby().
+			# Aliases in GROUP BY cause issues with PostgreSQL strict GROUP BY validation.
+			# TO_CHAR(expected_closing, 'FMMonth') references expected_closing — must
+			# appear in GROUP BY alongside EXTRACT(MONTH FROM expected_closing).
+			self.duration_groupby = MonthName(opp.expected_closing)
 		else:
 			self.group_by_period = Quarter(opp.expected_closing)
 			self.duration = Quarter(opp.expected_closing).as_("quarter")
+			# Same expression without alias for groupby()
+			self.duration_groupby = Quarter(opp.expected_closing)
 
 		self.pipeline_by = {"Owner": "opportunity_owner", "Sales Stage": "sales_stage"}[
 			self.filters.get("pipeline_by")
@@ -102,33 +109,58 @@ class SalesPipelineAnalytics:
 		self.get_fields()
 
 		opp = frappe.qb.DocType("Opportunity")
-		query = frappe.qb.get_query(
-			"Opportunity",
-			filters=self.get_conditions(),
-			ignore_permissions=True,
-		)
+
+		# PostgreSQL fix: cannot use frappe.qb.get_query() here because it
+		# auto-injects `name` into SELECT which breaks PostgreSQL strict GROUP BY
+		# when aggregates (COUNT) are used — "name" must appear in GROUP BY or
+		# an aggregate function. Use frappe.qb.from_() directly to control
+		# exactly which columns appear in SELECT.
+		base_query = frappe.qb.from_(opp)
+
+		# Apply filters from get_conditions() manually.
+		# get_conditions() returns a mix of dicts and lists:
+		#   dict  → {"field": value}           → equality filter
+		#   list  → ["field", "between", [...]] → range filter
+		for condition in self.get_conditions():
+			if isinstance(condition, dict):
+				for field, value in condition.items():
+					base_query = base_query.where(opp[field] == value)
+			elif isinstance(condition, list) and len(condition) == 3:
+				field, operator, value = condition
+				if operator == "between":
+					base_query = base_query.where(opp[field][value[0] : value[1]])
 
 		pipeline_field = opp._assign if self.group_by_based_on == "_assign" else opp.sales_stage
 
 		if self.filters.get("based_on") == "Number":
 			self.query_result = (
-				query.select(
+				base_query
+				.select(
 					pipeline_field.as_(self.pipeline_by),
 					frappe.query_builder.functions.Count("*").as_("count"),
 					self.duration,
 				)
-				.groupby(pipeline_field, self.group_by_period)
+				# PostgreSQL fix: GROUP BY must include all non-aggregate SELECT
+				# expressions. self.duration (MonthName/Quarter) references
+				# expected_closing — must be in GROUP BY alongside self.group_by_period
+				# (EXTRACT). Use duration_groupby (no alias) to avoid alias-in-groupby
+				# issues in PostgreSQL.
+				.groupby(pipeline_field, self.group_by_period, self.duration_groupby)
 				.orderby(self.group_by_period)
 				.run(as_dict=True)
 			)
 
 		if self.filters.get("based_on") == "Amount":
-			self.query_result = query.select(
-				pipeline_field.as_(self.pipeline_by),
-				opp.opportunity_amount.as_("amount"),
-				self.duration,
-				opp.currency,
-			).run(as_dict=True)
+			self.query_result = (
+				base_query
+				.select(
+					pipeline_field.as_(self.pipeline_by),
+					opp.opportunity_amount.as_("amount"),
+					self.duration,
+					opp.currency,
+				)
+				.run(as_dict=True)
+			)
 
 			self.convert_to_base_currency()
 

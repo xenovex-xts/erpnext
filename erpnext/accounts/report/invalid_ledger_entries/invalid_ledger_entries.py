@@ -54,8 +54,14 @@ def identify_cancelled_vouchers(active_vouchers: list[dict] | list | None = None
 	if active_vouchers:
 		# Group by voucher types and use single query to identify cancelled vouchers
 		vtypes = set([x.voucher_type for x in active_vouchers])
+		valid_doctypes = set(
+			frappe.get_all("DocType", filters={"name": ["in", list(vtypes)]}, pluck="name")
+		)
 
 		for _t in vtypes:
+			if _t not in valid_doctypes:
+				continue
+
 			_names = [x.voucher_no for x in active_vouchers if x.voucher_type == _t]
 			dt = qb.DocType(_t)
 			non_active_vouchers = (

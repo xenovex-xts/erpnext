@@ -8,7 +8,7 @@ from frappe.utils import add_days, date_diff, flt, get_first_day, get_last_day, 
 
 from erpnext.accounts.report.financial_statements import get_period_list
 from erpnext.accounts.utils import get_fiscal_year
-
+from pypika.terms import ValueWrapper
 
 class Deferred_Item:
 	"""
@@ -301,7 +301,8 @@ class Deferred_Revenue_and_Expense_Report:
 		"""
 		gle = qb.DocType("GL Entry")
 		# column doesn't have an alias option
-		posted = Column("posted")
+		# posted = Column("posted")
+		posted = ValueWrapper("posted").as_("posted")
 
 		if self.filters.type == "Revenue":
 			inv = qb.DocType("Sales Invoice")
