@@ -178,6 +178,7 @@ class PackingSlip(StatusUpdater):
 					"Packing Slip",
 					{"delivery_note": self.delivery_note, "docstatus": 1},
 					[{"MAX": "to_case_no"}],
+					order_by=None,
 				)
 			)
 			+ 1

@@ -9,7 +9,8 @@ from frappe.desk.reportview import get_match_cond
 from frappe.model.document import Document
 from frappe.query_builder import Interval
 from frappe.query_builder.functions import Count, CurDate, Date, Sum, UnixTimestamp
-from frappe.utils import add_days, flt, get_datetime, get_link_to_form, get_time, get_url, nowtime, today
+# from frappe.utils import add_days, flt, get_datetime, get_link_to_form, get_time, get_url, nowtime, today
+from frappe.utils import add_days, add_to_date, flt, get_datetime, get_link_to_form, get_time, get_url, nowtime, today
 from frappe.utils.user import is_website_user
 
 from erpnext import get_default_company
@@ -382,12 +383,13 @@ def get_timeline_data(doctype: str, name: str) -> dict[int, int]:
 	"""Return timeline for attendance"""
 
 	timesheet_detail = frappe.qb.DocType("Timesheet Detail")
+	one_year_ago = add_to_date(today(), years=-1)
 
 	return dict(
 		frappe.qb.from_(timesheet_detail)
-		.select(UnixTimestamp(timesheet_detail.from_time), Count("*"))
+		.select(UnixTimestamp(Date(timesheet_detail.from_time)), Count("*"))
 		.where(timesheet_detail.project == name)
-		.where(timesheet_detail.from_time > CurDate() - Interval(years=1))
+		.where(timesheet_detail.from_time > one_year_ago)
 		.where(timesheet_detail.docstatus < 2)
 		.groupby(Date(timesheet_detail.from_time))
 		.run()
