@@ -686,42 +686,52 @@ def validate_stock_reservation_settings(voucher: object) -> None:
 
 
 def get_available_qty_to_reserve(
-	item_code: str, warehouse: str, batch_no: str | None = None, ignore_sre=None
+    item_code: str, warehouse: str, batch_no: str | None = None, ignore_sre=None
 ) -> float:
-	"""Returns `Available Qty to Reserve (Actual Qty - Reserved Qty)` for Item, Warehouse and Batch combination."""
+    """Returns Available Qty to Reserve (Actual Qty - Reserved Qty)."""
 
-	from erpnext.stock.doctype.batch.batch import get_batch_qty
+    from erpnext.stock.doctype.batch.batch import get_batch_qty
 
-	if batch_no:
-		return get_batch_qty(
-			item_code=item_code, warehouse=warehouse, batch_no=batch_no, ignore_voucher_nos=[ignore_sre]
-		)
+    if batch_no:
+        return get_batch_qty(
+            item_code=item_code,
+            warehouse=warehouse,
+            batch_no=batch_no,
+            ignore_voucher_nos=[ignore_sre],
+        )
 
-	available_qty = get_stock_balance(item_code, warehouse)
+    available_qty = get_stock_balance(item_code, warehouse)
 
-	if available_qty:
-		sre = frappe.qb.DocType("Stock Reservation Entry")
-		query = (
-			frappe.qb.from_(sre)
-			.select(Sum(sre.reserved_qty - sre.delivered_qty - sre.transferred_qty - sre.consumed_qty))
-			.where(
-				(sre.docstatus == 1)
-				& (sre.item_code == item_code)
-				& (sre.warehouse == warehouse)
-				& (sre.delivered_qty < sre.reserved_qty)
-			)
-			.for_update()
-		)
+    if available_qty:
+        sre = frappe.qb.DocType("Stock Reservation Entry")
 
-		if ignore_sre:
-			query = query.where(sre.name != ignore_sre)
+        query = (
+            frappe.qb.from_(sre)
+            .select(
+                Sum(
+                    sre.reserved_qty
+                    - sre.delivered_qty
+                    - sre.transferred_qty
+                    - sre.consumed_qty
+                )
+            )
+            .where(
+                (sre.docstatus == 1)
+                & (sre.item_code == item_code)
+                & (sre.warehouse == warehouse)
+                & (sre.delivered_qty < sre.reserved_qty)
+            )
+        )
 
-		reserved_qty = query.run()[0][0] or 0.0
+        if ignore_sre:
+            query = query.where(sre.name != ignore_sre)
 
-		if reserved_qty:
-			return available_qty - reserved_qty
+        reserved_qty = query.run(as_list=True)[0][0] or 0
 
-	return available_qty
+        if reserved_qty:
+            return available_qty - reserved_qty
+
+    return available_qty
 
 
 def get_available_serial_nos_to_reserve(

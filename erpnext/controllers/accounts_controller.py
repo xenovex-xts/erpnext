@@ -79,6 +79,7 @@ from erpnext.stock.get_item_details import (
 )
 from erpnext.utilities.regional import temporary_flag
 from erpnext.utilities.transaction_base import TransactionBase
+from frappe.query_builder.functions import Abs, Max, Sum
 
 
 class AccountMissingError(frappe.ValidationError):
@@ -2336,7 +2337,10 @@ class AccountsController(TransactionBase):
 		adv = frappe.qb.DocType("Advance Payment Ledger Entry")
 		return (
 			qb.from_(adv)
-			.select(Abs(Sum(adv.amount)).as_("amount"), adv.currency.as_("account_currency"))
+			.select(
+				Abs(Sum(adv.amount)).as_("amount"),
+				Max(adv.currency).as_("account_currency"),
+			)
 			.where(adv.company == self.company)
 			.where(adv.delinked == 0)
 			.where(adv.against_voucher_type == self.doctype)
@@ -2364,15 +2368,21 @@ class AccountsController(TransactionBase):
 		new_status = None
 
 		PaymentRequest = frappe.qb.DocType("Payment Request")
-		paid_amount = frappe.get_value(
-			doctype="Payment Request",
-			filters={
-				"reference_doctype": self.doctype,
-				"reference_name": self.name,
-				"docstatus": 1,
-			},
-			fieldname=Sum(PaymentRequest.grand_total - PaymentRequest.outstanding_amount),
+
+		result = (
+			frappe.qb.from_(PaymentRequest)
+			.select(
+				Sum(
+					PaymentRequest.grand_total - PaymentRequest.outstanding_amount
+				).as_("paid_amount")
+			)
+			.where(PaymentRequest.reference_doctype == self.doctype)
+			.where(PaymentRequest.reference_name == self.name)
+			.where(PaymentRequest.docstatus == 1)
+			.run(as_dict=True)
 		)
+
+		paid_amount = result[0].paid_amount if result and result[0].paid_amount is not None else None
 
 		if not paid_amount:
 			if self.doctype in self.get_advance_payment_doctypes(payment_type="receivable"):
